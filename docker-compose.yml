@@ -1,0 +1,53 @@
+# このPoC用のローカル開発環境。`docker-compose up` だけで
+# frontend(Vite dev server) / backend(Rails) / db(MySQL) の3つが起動する状態を目指す。
+services:
+  db:
+    image: mysql:8.0
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+    # backendがdb起動前に接続しようとして失敗しないよう、
+    # MySQLが実際に接続を受け付けられる状態になるまで待つ
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    env_file:
+      - .env
+    environment:
+      # docker-compose内ではサービス名がそのままホスト名になるため "db" を指定
+      DB_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./backend:/rails
+    # db:prepare でDB作成・マイグレーションを済ませてからサーバーを起動する
+    # (手動で `docker-compose exec backend bin/rails db:create` 等を叩かなくて良いようにするため)
+    command: ["sh", "-c", "bin/rails db:prepare && bin/rails server -b 0.0.0.0 -p 3000"]
+
+  frontend:
+    build: ./frontend
+    env_file:
+      - .env
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      # ホスト側にnode_modulesが無くても、コンテナ内でインストール済みのnode_modulesを
+      # 上書きしないようにするためのおまじない(無名ボリューム)
+      - /app/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  db_data:
