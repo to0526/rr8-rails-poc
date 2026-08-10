@@ -48,3 +48,15 @@ DBのデータも含めて完全に消したい場合:
 ```bash
 docker-compose down -v
 ```
+
+### トラブルシューティング
+
+#### `bind host port 0.0.0.0:3306: address already in use`
+
+ホストの3306番ポートが他のプロセス(ローカルにインストール済みのMySQLなど)に
+使われている場合に発生する。`.env` に以下を追加してから `docker-compose up` を
+やり直す(コンテナ同士の通信には影響しない)。
+
+```bash
+echo "DB_PORT=3307" >> .env
+```

@@ -6,7 +6,10 @@ services:
     environment:
       MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
     ports:
-      - "3306:3306"
+      # ホスト側で既に3306番が使われている場合(ローカルにMySQLが入っている等)は、
+      # .envに DB_PORT=3307 のように設定すれば競合を避けられる
+      # (コンテナ間の接続はサービス名 "db" 経由で行うため、backend側の設定変更は不要)
+      - "${DB_PORT:-3306}:3306"
     volumes:
       - db_data:/var/lib/mysql
     # backendがdb起動前に接続しようとして失敗しないよう、
