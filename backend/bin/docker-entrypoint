@@ -1,0 +1,9 @@
+#!/bin/bash -e
+
+# ホスト側の ./backend を /rails にbind mountしているため、コンテナを
+# 異常終了(docker compose down 以外での停止など)すると tmp/pids/server.pid が
+# 消えずに残ってしまう。残ったままだと次回起動時にRailsが「既に起動中」と
+# 誤認識して即終了してしまうため、起動のたびに削除しておく。
+rm -f /rails/tmp/pids/server.pid
+
+exec "${@}"
