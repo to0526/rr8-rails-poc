@@ -60,3 +60,25 @@ export async function apiPost<T>(path: string, body: unknown): Promise<{ status:
 
   return { status: response.status, data }
 }
+
+// PATCHリクエスト用の共通関数(一覧画面の useFetcher から呼び出す想定)。
+//
+// apiPost と同様、422(バリデーションエラー)は例外にせずそのまま返す。
+// バックエンドが落ちている場合などは fetch() 自体が例外を投げるので、
+// その例外は呼び出し元(action)でキャッチしてもらう想定(このファイルでは
+// もみ消さない)。
+export async function apiPatch<T>(path: string, body: unknown): Promise<{ status: number; data: T }> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+  const data = (await response.json()) as T
+
+  if (!response.ok && response.status !== 422) {
+    throw new ApiError(response.status, `API request failed: PATCH ${path} (${response.status})`)
+  }
+
+  return { status: response.status, data }
+}

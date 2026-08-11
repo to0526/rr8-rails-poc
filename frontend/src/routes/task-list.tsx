@@ -12,8 +12,8 @@
 // - 画面側は useLoaderData() で取得済みのデータを受け取るだけでよく、
 //   ローディング状態やuseEffectの依存配列を自分で管理しなくてよい
 // という点。
-import { Link, useLoaderData } from 'react-router'
-import { apiGet } from '../lib/api'
+import { Link, useFetcher, useLoaderData, type ActionFunctionArgs } from 'react-router'
+import { apiGet, apiPatch } from '../lib/api'
 
 type Task = {
   id: number
@@ -30,6 +30,63 @@ type TasksResponse = {
 export async function taskListLoader(): Promise<Task[]> {
   const response = await apiGet<TasksResponse>('/tasks')
   return response.data
+}
+
+// taskListAction: このルート(/tasks)に対して useFetcher().submit() が呼ばれたときに
+// 実行される関数。<Form> によるページ遷移を伴う送信とは違い、fetcher による送信は
+// 「今表示している画面はそのままで、裏側でデータだけ更新する」ためのもの
+// (このPRでは、一覧の中の1タスクの完了/未完了だけをその場で切り替える用途)。
+export async function taskListAction({ request }: ActionFunctionArgs) {
+  const formData = await request.formData()
+  const taskId = formData.get('taskId')
+  const done = formData.get('done') === 'true'
+
+  try {
+    await apiPatch(`/tasks/${taskId}`, { task: { done } })
+    return { ok: true }
+  } catch {
+    // バックエンドが落ちている場合など、更新自体が失敗したケース。
+    // ここで例外を投げ直すとエラーバウンダリに飛んで画面全体が壊れてしまうため、
+    // 「失敗した」という結果を返すだけにとどめる。
+    // action が完了すると React Router は自動的に taskListLoader を再実行して
+    // 一覧を再取得するので、実際には更新されていない(=元のままの)done値が
+    // 返ってきて、後述の楽観的UIの表示も自然に元へ戻る(ロールバック)。
+    return { ok: false }
+  }
+}
+
+// TaskRow: 1タスク分の行。チェックボックスの操作を useFetcher() で行う。
+//
+// useFetcher() は <Form> と違い、ページ遷移を伴わずにローダー/アクションを
+// 呼び出すためのフック。ここでは「チェックボックスをクリックしたら、画面はそのままで
+// 裏側のRails APIだけ叩いて完了状態を更新する」という用途で使っている。
+function TaskRow({ task }: { task: Task }) {
+  const fetcher = useFetcher<typeof taskListAction>()
+
+  // fetcher.formData は「今まさに送信中のFormData」。送信中でなければ undefined。
+  // これが存在する間は、サーバーからの返事を待たずに「送信しようとしている値」を
+  // そのまま表示に使う(=楽観的UI)。送信が完了すると formData は消え、
+  // taskListLoader が再取得した本当の task.done に表示が切り替わる。
+  // 成功していればそのまま同じ見た目になり、失敗していれば元の見た目に戻る、
+  // という形でロールバックが自動的に実現される。
+  const optimisticDone = fetcher.formData ? fetcher.formData.get('done') === 'true' : task.done
+
+  const handleToggle = () => {
+    fetcher.submit(
+      { taskId: String(task.id), done: String(!optimisticDone) },
+      { method: 'post', action: '/tasks' },
+    )
+  }
+
+  return (
+    <li>
+      <label>
+        <input type="checkbox" checked={optimisticDone} disabled={fetcher.state !== 'idle'} onChange={handleToggle} />
+        {' '}
+        {task.title}
+      </label>
+    </li>
+  )
 }
 
 function TaskList() {
@@ -50,9 +107,7 @@ function TaskList() {
       ) : (
         <ul>
           {tasks.map((task) => (
-            <li key={task.id}>
-              {task.done ? '✅' : '⬜️'} {task.title}
-            </li>
+            <TaskRow key={task.id} task={task} />
           ))}
         </ul>
       )}
