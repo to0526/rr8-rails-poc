@@ -4,7 +4,9 @@ React Router v8(Data Mode) + Rails(APIモード)の検証用リポジトリで�
 詳しい方針・スコープは [CLAUDE.md](./CLAUDE.md)、実装のロードマップは
 [docs/implementation-plan.md](./docs/implementation-plan.md)、
 検証結果のまとめ・採用可否の所感は [docs/poc-summary.md](./docs/poc-summary.md)
-を参照してください。
+を参照してください。Railsエンジニア向けにfrontendの構成を説明したガイドは
+[docs/frontend-guide-for-rails-engineers.md](./docs/frontend-guide-for-rails-engineers.md)
+にあります。
 
 ## 構成
 
