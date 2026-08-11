@@ -10,7 +10,7 @@
 // 必ず "react-router" から import すること。
 import { createBrowserRouter } from 'react-router'
 import TopPage from './routes/top-page'
-import TaskList, { taskListLoader } from './routes/task-list'
+import TaskList, { taskListAction, taskListLoader } from './routes/task-list'
 import TaskNew, { taskNewAction } from './routes/task-new'
 
 export const router = createBrowserRouter([
@@ -23,9 +23,13 @@ export const router = createBrowserRouter([
     // "/tasks" にアクセスした時にタスク一覧画面を表示する。
     // loader を紐付けておくことで、画面を描画する前に taskListLoader が呼ばれ、
     // その戻り値が TaskList 内で useLoaderData() から参照できるようになる。
+    // action は useFetcher().submit() からの送信(チェックボックスによる
+    // 完了状態の切り替え)を受け取るために紐付けている。<Form> によるページ遷移とは
+    // 異なり、送信後もこの画面から離れない。
     path: '/tasks',
     Component: TaskList,
     loader: taskListLoader,
+    action: taskListAction,
   },
   {
     // "/tasks/new" にアクセスした時にタスク作成画面を表示する。
