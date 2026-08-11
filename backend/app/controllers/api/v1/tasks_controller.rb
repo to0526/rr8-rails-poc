@@ -7,6 +7,12 @@ module Api
         render json: { data: tasks.map { |task| task_json(task) } }
       end
 
+      def show
+        task = Task.find(params[:id])
+
+        render json: { data: task_json(task) }
+      end
+
       def create
         task = Task.new(task_params)
 
@@ -25,6 +31,13 @@ module Api
         else
           render json: { errors: task.errors.to_hash(true) }, status: :unprocessable_entity
         end
+      end
+
+      def destroy
+        task = Task.find(params[:id])
+        task.destroy!
+
+        head :no_content
       end
 
       private
