@@ -42,7 +42,7 @@ Rails でいうと、`router.tsx` が `config/routes.rb`、`routes/` 配下の
 ```mermaid
 sequenceDiagram
     actor User as ユーザー
-    participant RR as React Router
+    participant RR as "React Router ランタイム(RouterProvider)"
     participant Handler as "loader / action"
     participant Rails as Rails API
     participant View as 画面(コンポーネント)
@@ -167,7 +167,7 @@ Rails のコントローラと違い、`loader` は **Reactコンポーネント
 ```mermaid
 sequenceDiagram
     actor User as ユーザー
-    participant RR as React Router
+    participant RR as "React Router ランタイム(RouterProvider)"
     participant Loader as taskShowLoader
     participant API as lib/api.ts
     participant Rails as Rails API
@@ -238,7 +238,7 @@ export async function taskShowAction({ params }: ActionFunctionArgs) {
 sequenceDiagram
     actor User as ユーザー
     participant Form as "&lt;Form method=post&gt;"
-    participant RR as React Router
+    participant RR as "React Router ランタイム(RouterProvider)"
     participant Action as taskNewAction
     participant API as lib/api.ts
     participant Rails as Rails API
@@ -319,7 +319,7 @@ export async function taskListAction({ request }: ActionFunctionArgs) {
 sequenceDiagram
     actor User as ユーザー
     participant Row as TaskRow
-    participant RR as React Router
+    participant RR as "React Router ランタイム(RouterProvider)"
     participant Action as taskListAction
     participant Rails as Rails API
     participant Loader as taskListLoader
@@ -423,7 +423,7 @@ function TaskListLegacy() {
 ```mermaid
 sequenceDiagram
     actor User as ユーザー
-    participant RR as React Router
+    participant RR as "React Router ランタイム(RouterProvider)"
     participant Loader as taskListLoader
     participant Comp as TaskListコンポーネント
     participant Rails as Rails API
