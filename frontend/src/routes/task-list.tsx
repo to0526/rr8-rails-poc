@@ -12,7 +12,7 @@
 // - 画面側は useLoaderData() で取得済みのデータを受け取るだけでよく、
 //   ローディング状態やuseEffectの依存配列を自分で管理しなくてよい
 // という点。
-import { useLoaderData } from 'react-router'
+import { Link, useLoaderData } from 'react-router'
 import { apiGet } from '../lib/api'
 
 type Task = {
@@ -42,6 +42,9 @@ function TaskList() {
   return (
     <main>
       <h1>タスク一覧</h1>
+      <p>
+        <Link to="/tasks/new">タスクを作成する</Link>
+      </p>
       {tasks.length === 0 ? (
         <p>タスクがありません。</p>
       ) : (

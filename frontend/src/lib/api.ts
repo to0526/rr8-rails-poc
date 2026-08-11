@@ -36,3 +36,27 @@ export async function apiGet<T>(path: string): Promise<T> {
 
   return response.json() as Promise<T>
 }
+
+// POSTリクエスト用の共通関数(action から呼び出す想定)。
+//
+// GET と違い、POST はバリデーションエラー(422)が「失敗」ではなく「フォームに
+// 表示すべき結果」として返ってくる。そのため 422 のときは例外を投げず、
+// レスポンスの status と body をそのまま呼び出し元(action)に返す。
+// action 側は status を見て、201 なら成功処理、422 なら useActionData() 用に
+// body(errors)をそのまま return する、という使い分けができる。
+// それ以外のエラー(500など)は「想定外の失敗」として例外を投げる。
+export async function apiPost<T>(path: string, body: unknown): Promise<{ status: number; data: T }> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+
+  const data = (await response.json()) as T
+
+  if (!response.ok && response.status !== 422) {
+    throw new ApiError(response.status, `API request failed: POST ${path} (${response.status})`)
+  }
+
+  return { status: response.status, data }
+}

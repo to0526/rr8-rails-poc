@@ -11,6 +11,7 @@
 import { createBrowserRouter } from 'react-router'
 import TopPage from './routes/top-page'
 import TaskList, { taskListLoader } from './routes/task-list'
+import TaskNew, { taskNewAction } from './routes/task-new'
 
 export const router = createBrowserRouter([
   {
@@ -25,5 +26,13 @@ export const router = createBrowserRouter([
     path: '/tasks',
     Component: TaskList,
     loader: taskListLoader,
+  },
+  {
+    // "/tasks/new" にアクセスした時にタスク作成画面を表示する。
+    // action を紐付けておくことで、この画面の <Form method="post"> が
+    // 送信されたときに taskNewAction が呼ばれる。
+    path: '/tasks/new',
+    Component: TaskNew,
+    action: taskNewAction,
   },
 ])
