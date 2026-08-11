@@ -39,6 +39,13 @@ Rails でいうと、`router.tsx` が `config/routes.rb`、`routes/` 配下の
 ブラウザ操作の種類によって、React Router がどの処理(`loader` / `action` /
 `useFetcher`)を呼び分けるかを図にすると次のようになります。
 
+図中の「React Router ランタイム(RouterProvider)」は、`router.tsx` で
+定義した設定(パスとcomponent/loader/actionの対応表)をもとに、実際に
+URL変化やフォーム送信を検知して `loader` / `action` を呼び分けたり、
+その結果をコンポーネントに渡したりする**実行時の仕組み**を指しています。
+`main.tsx` の `<RouterProvider router={router} />` がこれを起動しています。
+「React Router」というライブラリ名そのものと区別するためにこう呼んでいます。
+
 ```mermaid
 sequenceDiagram
     actor User as ユーザー
