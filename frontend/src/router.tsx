@@ -10,11 +10,20 @@
 // 必ず "react-router" から import すること。
 import { createBrowserRouter } from 'react-router'
 import TopPage from './routes/top-page'
+import TaskList, { taskListLoader } from './routes/task-list'
 
 export const router = createBrowserRouter([
   {
     // "/" にアクセスした時にトップページを表示する
     path: '/',
     Component: TopPage,
+  },
+  {
+    // "/tasks" にアクセスした時にタスク一覧画面を表示する。
+    // loader を紐付けておくことで、画面を描画する前に taskListLoader が呼ばれ、
+    // その戻り値が TaskList 内で useLoaderData() から参照できるようになる。
+    path: '/tasks',
+    Component: TaskList,
+    loader: taskListLoader,
   },
 ])
