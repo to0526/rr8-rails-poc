@@ -34,6 +34,36 @@ Rails でいうと、`router.tsx` が `config/routes.rb`、`routes/` 配下の
 各ファイルが「コントローラのアクション1つ+対応するビュー1つ」を1ファイルに
 まとめたもの、とイメージすると理解しやすいです。
 
+### 全体の処理フロー(概念図)
+
+ブラウザ操作の種類によって、React Router がどの処理(`loader` / `action` /
+`useFetcher`)を呼び分けるかを図にすると次のようになります。
+
+```mermaid
+flowchart TD
+    A["ユーザー操作"] --> B{"操作の種類"}
+    B -->|"リンククリック・URL遷移"| C["loader が呼ばれる"]
+    B -->|"&lt;Form&gt;送信(画面遷移あり)"| D["action が呼ばれる"]
+    B -->|"useFetcher().submit()(画面遷移なし)"| E["同ルートの action が呼ばれる"]
+
+    C --> F["Rails API を fetch(lib/api.ts)"]
+    D --> F
+    E --> F
+    F --> G["Rails APIがJSONを返す"]
+
+    G --> H["useLoaderData()で画面に反映"]
+    D --> I{"actionの戻り値"}
+    I -->|"redirect()"| J["別ルートへ遷移 → 遷移先のloaderが呼ばれる"]
+    I -->|"データをreturn(422等)"| K["useActionData()で同じ画面にエラー表示"]
+    E --> L["actionの完了後、同ルートのloaderが自動的に再実行される"]
+    L --> H
+```
+
+ポイントは、**`action` が完了すると React Router が自動的に同じルートの
+`loader` を再実行する**ことです。これにより「更新後は常に最新のサーバー側の
+値が画面に反映される」ことが保証され、`useFetcher` の楽観的UIの
+ロールバックもこの仕組みの上に成り立っています(詳細は後述)。
+
 ## 2. Rails の概念との対応表
 
 | Rails | React Router v8 (Data Mode) | 備考 |
@@ -115,6 +145,29 @@ Rails のコントローラと違い、`loader` は **Reactコンポーネント
 ただの非同期関数**です。ルーティングの仕組み(React Router)を経由せずに
 直接呼び出して単体テストできる、という利点があります(後述のテストの項参照)。
 
+### loaderの処理フロー(`/tasks/:id` に遷移した場合)
+
+```mermaid
+sequenceDiagram
+    actor User as ユーザー
+    participant RR as React Router
+    participant Loader as taskShowLoader
+    participant API as lib/api.ts
+    participant Rails as Rails API
+
+    User->>RR: "/tasks/1" へ遷移(リンククリック等)
+    RR->>Loader: taskShowLoader({ params: { id: "1" } }) を呼ぶ
+    Loader->>API: apiGet("/tasks/1")
+    API->>Rails: GET /api/v1/tasks/1
+    Rails-->>API: 200 OK + { data: { id: 1, title: "...", done: false } }
+    API-->>Loader: レスポンスをJSONとして返す
+    Loader-->>RR: task を return
+    RR->>User: TaskShowコンポーネントを描画(useLoaderData()でtaskを参照)
+```
+
+タスクが存在しない場合は `apiGet` が `ApiError` を投げ、`loader` 内でも
+catch していないため、React Router のデフォルトのエラー画面に委ねられます。
+
 ## 5. `action`: フォーム送信の処理(create / update / destroy 相当)
 
 `<Form method="post">` が送信されると、そのルートに紐付いた `action` が
@@ -162,6 +215,39 @@ export async function taskShowAction({ params }: ActionFunctionArgs) {
 }
 ```
 
+### actionの処理フロー(タスク作成・バリデーションエラーの分岐)
+
+```mermaid
+sequenceDiagram
+    actor User as ユーザー
+    participant Form as "&lt;Form method=post&gt;"
+    participant RR as React Router
+    participant Action as taskNewAction
+    participant API as lib/api.ts
+    participant Rails as Rails API
+
+    User->>Form: 「作成する」をクリック
+    Form->>RR: フォーム送信をインターセプト
+    RR->>Action: taskNewAction({ request }) を呼ぶ
+    Action->>API: apiPost("/tasks", { task: { title } })
+    API->>Rails: POST /api/v1/tasks
+
+    alt バリデーション成功(201)
+        Rails-->>API: 201 Created + { data: task }
+        API-->>Action: { status: 201, data }
+        Action-->>RR: redirect("/tasks")
+        RR->>User: /tasks へ遷移し、taskListLoaderが呼ばれる
+    else バリデーション失敗(422)
+        Rails-->>API: 422 Unprocessable Entity + { errors: { title: [...] } }
+        API-->>Action: { status: 422, data }
+        Action-->>RR: { errors } を return(画面遷移しない)
+        RR->>User: 同じ画面のままuseActionData()でエラー表示
+    end
+```
+
+Rails の「保存に成功したら `redirect_to`、失敗したら `render :new`」という
+分岐と対応関係にあることが図からも分かります。
+
 ## 6. `useFetcher()`: 画面遷移を伴わない部分更新(Turboの部分更新に近い)
 
 一覧画面のチェックボックス(完了/未完了の切り替え)のように、「ページ全体は
@@ -206,6 +292,47 @@ export async function taskListAction({ request }: ActionFunctionArgs) {
   }
 }
 ```
+
+### useFetcherの処理フロー(楽観的UI更新とロールバック)
+
+チェックボックスをクリックしてから画面に最終的な値が反映されるまでの
+流れです。「成功時」と「失敗時」で表示がどう収束するかがポイントです。
+
+```mermaid
+sequenceDiagram
+    actor User as ユーザー
+    participant Row as TaskRow
+    participant RR as React Router
+    participant Action as taskListAction
+    participant Rails as Rails API
+    participant Loader as taskListLoader
+
+    User->>Row: チェックボックスをクリック
+    Row->>Row: fetcher.submit()を呼ぶ前にoptimisticDoneで即座に見た目を更新
+    Row->>RR: fetcher.submit({ taskId, done })
+    RR->>Action: taskListAction({ request }) を呼ぶ
+    Action->>Rails: PATCH /api/v1/tasks/:id
+
+    alt 更新成功
+        Rails-->>Action: 200 OK
+        Action-->>RR: { ok: true }
+    else 更新失敗(通信エラー等)
+        Rails--xAction: 通信エラー
+        Action-->>RR: { ok: false }(例外を投げ直さない)
+    end
+
+    Note over RR,Loader: actionの完了後、React Routerが自動的にloaderを再実行する
+    RR->>Loader: taskListLoader() を再実行
+    Loader->>Rails: GET /api/v1/tasks
+    Rails-->>Loader: 実際のdone値を含む一覧
+    Loader-->>RR: 最新のtasksを返す
+    RR->>Row: fetcher.formDataがクリアされ、taskのdoneが再取得結果に切り替わる
+    Note over Row: 成功時は見た目そのまま確定/失敗時は元の値に自動で戻る(ロールバック)
+```
+
+「失敗したら元に戻す」ための特別なコード(前の値を覚えておいて戻す、等)を
+書かずに済んでいるのは、`action` 完了後に `loader` が必ず再実行される
+React Router の仕組みに乗っているためです。
 
 ## 7. `lib/api.ts`: Rails API呼び出しの共通ラッパー
 
@@ -270,6 +397,35 @@ function TaskListLegacy() {
 `loader` 版(`task-list.tsx`)にはこの `useState` × 2、`useEffect`、
 キャンセル用フラグが一切登場しません。「取得済みのデータをどう表示するか」
 だけに専念できるのが Data Mode の利点です。
+
+### Data Mode版とLegacy版の流れの違い
+
+同じ「一覧画面を表示してAPIを叩く」処理でも、データ取得のタイミングと
+状態管理の主体がどちらにあるかが異なります。
+
+```mermaid
+flowchart LR
+    subgraph DataMode["Data Mode版(/tasks)"]
+        direction TB
+        A1["URL遷移"] --> A2["React RouterがloaderをRails APIに問い合わせる"]
+        A2 --> A3["取得完了後にコンポーネントを描画"]
+        A3 --> A4["useLoaderData()で受け取るだけ"]
+    end
+
+    subgraph Legacy["Legacy版(/tasks-legacy)"]
+        direction TB
+        B1["URL遷移"] --> B2["先にコンポーネントを描画(データはnull)"]
+        B2 --> B3["「読み込み中...」を表示"]
+        B3 --> B4["useEffect内でfetch実行"]
+        B4 --> B5["setTasksで再描画をトリガー"]
+        B5 --> B6["アンマウント済みなら更新をスキップ(cancelledフラグ)"]
+    end
+```
+
+Data Mode版は「取得してから描画する」、Legacy版は「先に描画してから
+コンポーネント内で取得する」という順序の違いがあり、これがそのまま
+ローディング状態やキャンセル処理を自前で書く必要があるかどうかの差に
+つながっています。
 
 ## 10. CSS・画像の扱い
 
