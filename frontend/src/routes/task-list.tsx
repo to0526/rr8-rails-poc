@@ -12,8 +12,19 @@
 // - 画面側は useLoaderData() で取得済みのデータを受け取るだけでよく、
 //   ローディング状態やuseEffectの依存配列を自分で管理しなくてよい
 // という点。
+// このPRでは画像・CSSの扱い方も検証している。
+// - アイコン(taskIconUrl): public/task-icon.svg を "/task-icon.svg" という
+//   絶対パスで直接参照している。src/assets の画像と違い import は不要で、
+//   Viteはこのファイルをビルド時に一切加工せず、そのまま dist/ 直下にコピーする
+//   (ファイル名にハッシュも付かない)。そのぶん、ファイル名を変更しても
+//   ビルドエラーにならず気付きにくい、キャッシュが効きすぎて更新が反映されにくい、
+//   といったトレードオフがある。
+// - styles: task-list.module.css を import した CSS Modules。
 import { Link, useFetcher, useLoaderData, type ActionFunctionArgs } from 'react-router'
 import { apiGet, apiPatch } from '../lib/api'
+import styles from './task-list.module.css'
+
+const taskIconUrl = '/task-icon.svg'
 
 type Task = {
   id: number
@@ -79,13 +90,13 @@ function TaskRow({ task }: { task: Task }) {
   }
 
   return (
-    <li>
-      <label>
+    <li className={styles.row}>
+      <img src={taskIconUrl} alt="" className={styles.icon} />
+      <label className={styles.label}>
         <input type="checkbox" checked={optimisticDone} disabled={fetcher.state !== 'idle'} onChange={handleToggle} />
         {' '}
         {task.title}
       </label>
-      {' '}
       <Link to={`/tasks/${task.id}`}>詳細</Link>
     </li>
   )
@@ -99,7 +110,7 @@ function TaskList() {
   const tasks = useLoaderData<typeof taskListLoader>()
 
   return (
-    <main>
+    <main className={styles.main}>
       <h1>タスク一覧</h1>
       <p>
         <Link to="/tasks/new">タスクを作成する</Link>
@@ -107,7 +118,7 @@ function TaskList() {
       {tasks.length === 0 ? (
         <p>タスクがありません。</p>
       ) : (
-        <ul>
+        <ul className={styles.list}>
           {tasks.map((task) => (
             <TaskRow key={task.id} task={task} />
           ))}

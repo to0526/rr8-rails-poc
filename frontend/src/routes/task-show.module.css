@@ -1,0 +1,39 @@
+.main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: var(--spacing-lg);
+}
+
+.heading {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.icon {
+  width: 24px;
+  height: 24px;
+}
+
+.detail {
+  margin: var(--spacing-md) 0;
+}
+
+.detail dt {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.detail dd {
+  margin: 0 0 var(--spacing-sm);
+}
+
+.deleteButton {
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-danger);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--color-danger);
+  font: inherit;
+  cursor: pointer;
+}
