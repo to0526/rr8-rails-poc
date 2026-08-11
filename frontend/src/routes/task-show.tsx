@@ -16,6 +16,10 @@ import {
   type LoaderFunctionArgs,
 } from 'react-router'
 import { apiDelete, apiGet } from '../lib/api'
+import styles from './task-show.module.css'
+
+// task-list.tsx と同じく public/task-icon.svg を絶対パスで直接参照する例。
+const taskIconUrl = '/task-icon.svg'
 
 type Task = {
   id: number
@@ -49,12 +53,15 @@ function TaskShow() {
   const task = useLoaderData<typeof taskShowLoader>()
 
   return (
-    <main>
-      <h1>タスク詳細</h1>
+    <main className={styles.main}>
+      <h1 className={styles.heading}>
+        <img src={taskIconUrl} alt="" className={styles.icon} />
+        タスク詳細
+      </h1>
       <p>
         <Link to="/tasks">一覧に戻る</Link>
       </p>
-      <dl>
+      <dl className={styles.detail}>
         <dt>タイトル</dt>
         <dd>{task.title}</dd>
         <dt>状態</dt>
@@ -62,7 +69,7 @@ function TaskShow() {
       </dl>
       {/* 削除ボタン: 送信すると taskShowAction が呼ばれ、成功後は一覧画面へ遷移する */}
       <Form method="post">
-        <button type="submit">削除する</button>
+        <button type="submit" className={styles.deleteButton}>削除する</button>
       </Form>
     </main>
   )

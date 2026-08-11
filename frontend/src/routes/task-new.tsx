@@ -13,6 +13,7 @@
 // という点。
 import { Form, redirect, useActionData, type ActionFunctionArgs } from 'react-router'
 import { apiPost } from '../lib/api'
+import styles from './task-new.module.css'
 
 type Task = {
   id: number
@@ -51,21 +52,21 @@ function TaskNew() {
   const titleErrors = actionData?.errors?.title
 
   return (
-    <main>
+    <main className={styles.main}>
       <h1>タスク作成</h1>
       <Form method="post">
-        <div>
+        <div className={styles.field}>
           <label htmlFor="title">タイトル</label>
-          <input id="title" name="title" type="text" />
+          <input id="title" name="title" type="text" className={styles.input} />
         </div>
         {titleErrors && (
-          <ul>
+          <ul className={styles.errors}>
             {titleErrors.map((message) => (
               <li key={message}>タイトル{message}</li>
             ))}
           </ul>
         )}
-        <button type="submit">作成する</button>
+        <button type="submit" className={styles.button}>作成する</button>
       </Form>
     </main>
   )
