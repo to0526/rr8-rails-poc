@@ -12,6 +12,7 @@ import { createBrowserRouter } from 'react-router'
 import TopPage from './routes/top-page'
 import TaskList, { taskListAction, taskListLoader } from './routes/task-list'
 import TaskNew, { taskNewAction } from './routes/task-new'
+import TaskListLegacy from './routes-legacy/task-list-legacy'
 
 export const router = createBrowserRouter([
   {
@@ -38,5 +39,12 @@ export const router = createBrowserRouter([
     path: '/tasks/new',
     Component: TaskNew,
     action: taskNewAction,
+  },
+  {
+    // "/tasks-legacy" にアクセスした時に、Declarative Mode版のタスク一覧を表示する。
+    // loader を紐付けず、コンポーネント内の useEffect で自分でデータ取得する
+    // (Data Mode版の /tasks との比較用)。
+    path: '/tasks-legacy',
+    Component: TaskListLegacy,
   },
 ])
