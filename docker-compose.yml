@@ -34,9 +34,11 @@ services:
       - "3000:3000"
     volumes:
       - ./backend:/rails
-    # db:prepare でDB作成・マイグレーションを済ませてからサーバーを起動する
+    # db:prepare でDB作成・マイグレーションを済ませ、db:seed で一覧画面確認用のデータを
+    # 投入してからサーバーを起動する(db:seedはfind_or_create_by!で冪等にしてあるため
+    # 毎回実行しても問題ない)
     # (手動で `docker-compose exec backend bin/rails db:create` 等を叩かなくて良いようにするため)
-    command: ["sh", "-c", "bin/rails db:prepare && bin/rails server -b 0.0.0.0 -p 3000"]
+    command: ["sh", "-c", "bin/rails db:prepare && bin/rails db:seed && bin/rails server -b 0.0.0.0 -p 3000"]
 
   frontend:
     build: ./frontend
