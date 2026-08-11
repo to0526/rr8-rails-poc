@@ -85,6 +85,8 @@ function TaskRow({ task }: { task: Task }) {
         {' '}
         {task.title}
       </label>
+      {' '}
+      <Link to={`/tasks/${task.id}`}>詳細</Link>
     </li>
   )
 }
