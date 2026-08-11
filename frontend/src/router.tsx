@@ -12,6 +12,7 @@ import { createBrowserRouter } from 'react-router'
 import TopPage from './routes/top-page'
 import TaskList, { taskListAction, taskListLoader } from './routes/task-list'
 import TaskNew, { taskNewAction } from './routes/task-new'
+import TaskShow, { taskShowAction, taskShowLoader } from './routes/task-show'
 import TaskListLegacy from './routes-legacy/task-list-legacy'
 
 export const router = createBrowserRouter([
@@ -39,6 +40,17 @@ export const router = createBrowserRouter([
     path: '/tasks/new',
     Component: TaskNew,
     action: taskNewAction,
+  },
+  {
+    // "/tasks/:id" にアクセスした時にタスク詳細画面を表示する。":id" の部分は
+    // 可変パラメータで、実際のURL(例: /tasks/3)に応じた値が params.id として
+    // loader・action に渡される。
+    // action は詳細画面内の削除フォーム(<Form method="post">によるページ遷移を
+    // 伴う送信)を受け取るために紐付けている。
+    path: '/tasks/:id',
+    Component: TaskShow,
+    loader: taskShowLoader,
+    action: taskShowAction,
   },
   {
     // "/tasks-legacy" にアクセスした時に、Declarative Mode版のタスク一覧を表示する。

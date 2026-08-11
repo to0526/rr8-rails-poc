@@ -82,3 +82,18 @@ export async function apiPatch<T>(path: string, body: unknown): Promise<{ status
 
   return { status: response.status, data }
 }
+
+// DELETEリクエスト用の共通関数(詳細画面の action から呼び出す想定)。
+//
+// Rails 側は削除成功時に 204 No Content(ボディなし)を返す。ボディが無い
+// レスポンスに対して response.json() を呼ぶとパースエラーになるため、
+// apiGet / apiPost / apiPatch とは違い、ここではボディを読まずステータスだけ返す。
+export async function apiDelete(path: string): Promise<{ status: number }> {
+  const response = await fetch(`${API_BASE_URL}${path}`, { method: 'DELETE' })
+
+  if (!response.ok) {
+    throw new ApiError(response.status, `API request failed: DELETE ${path} (${response.status})`)
+  }
+
+  return { status: response.status }
+}
