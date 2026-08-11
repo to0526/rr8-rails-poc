@@ -46,8 +46,28 @@ PoC全体を以下のPR単位に分解する。各PRは着手前にファイル�
 - `frontend/src/routes-legacy/` に `useEffect` + `fetch` の従来型で同等の一覧画面を1つ実装(Data Modeとの比較用)
 - 動作確認: 同じデータが表示されること、Data Mode版とのコード量・体験の違いを比較できる状態にする
 
-## PR9: PoC結果まとめ
-- README等に、検証した4つのポイント(loader/action連携、422エラー処理、useFetcher楽観的UI、CORS挙動)の所感・採用可否の判断材料をまとめる
+## PR9: show / destroyアクションの追加
+- Backend: `app/controllers/api/v1/` の対象コントローラに `show`(詳細取得) / `destroy`(削除)アクションを追加し、`config/routes.rb` のルーティングを更新
+  - `show`: 対象が存在しない場合は404 + `{ errors: {...} }` を返す
+  - `destroy`: 削除成功時は204(または削除後のデータ)を返す
+- Frontend: `src/routes/` に詳細画面(`loader` で `show` を取得)を追加し `router.tsx` に登録
+  - 一覧画面から詳細画面への遷移リンクを追加
+  - 削除操作は `action`(または既存の `useFetcher()`)から `destroy` エンドポイントを呼び出し、成功時は一覧へ遷移
+- 動作確認: ブラウザで詳細画面の表示、削除操作後に一覧から対象が消えることを確認。`curl` で `show`(200/404)・`destroy`(204)のレスポンスも確認
+
+## PR10: CSS・画像の扱い
+- Frontend: CSSの取り込み方針を検証(グローバルCSS / CSS Modules など、Viteでの扱いを比較)
+- 画像等の静的アセットの配置(`src/assets/` などimportして使う方式、または `public/` 配下で直接参照する方式)を実装し、両者の挙動差を確認
+- 既存画面(一覧・詳細・フォーム)に最低限のスタイルと画像を適用し、見た目を整える
+- 動作確認: `docker-compose up` 後、ブラウザでスタイル・画像が反映されていることを確認。ビルド後(`docker build`)の本番相当バンドルでも画像パスが壊れていないことを確認
+
+## PR11: テスト追加
+- Backend: RSpec(または既定のテスティングフレームワーク)を導入し、`show` / `destroy` を含む主要コントローラのリクエストスペックを追加
+- Frontend: Vitest + Testing Library等を導入し、`loader` / `action` を含む主要ルートのコンポーネントテストを追加
+- 動作確認: `docker build` / `docker run`(またはコンテナ内コマンド)でテストが実行でき、全て成功することを確認。実行コマンドをPR本文に明記する
+
+## PR12: PoC結果まとめ
+- README等に、検証した観点(loader/action連携、422エラー処理、useFetcher楽観的UI、CORS挙動、show/destroyを含むCRUD一式、CSS・画像の扱い、テスト導入)の所感・採用可否の判断材料をまとめる
 - コードは追加せず、ドキュメントのみの変更
 
 ## 進め方の注意
