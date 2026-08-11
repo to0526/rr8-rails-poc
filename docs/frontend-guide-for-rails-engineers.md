@@ -40,23 +40,40 @@ Rails でいうと、`router.tsx` が `config/routes.rb`、`routes/` 配下の
 `useFetcher`)を呼び分けるかを図にすると次のようになります。
 
 ```mermaid
-flowchart TD
-    A["ユーザー操作"] --> B{"操作の種類"}
-    B -->|"リンククリック・URL遷移"| C["loader が呼ばれる"]
-    B -->|"&lt;Form&gt;送信(画面遷移あり)"| D["action が呼ばれる"]
-    B -->|"useFetcher().submit()(画面遷移なし)"| E["同ルートの action が呼ばれる"]
+sequenceDiagram
+    actor User as ユーザー
+    participant RR as React Router
+    participant Handler as "loader / action"
+    participant Rails as Rails API
+    participant View as 画面(コンポーネント)
 
-    C --> F["Rails API を fetch(lib/api.ts)"]
-    D --> F
-    E --> F
-    F --> G["Rails APIがJSONを返す"]
-
-    G --> H["useLoaderData()で画面に反映"]
-    D --> I{"actionの戻り値"}
-    I -->|"redirect()"| J["別ルートへ遷移 → 遷移先のloaderが呼ばれる"]
-    I -->|"データをreturn(422等)"| K["useActionData()で同じ画面にエラー表示"]
-    E --> L["actionの完了後、同ルートのloaderが自動的に再実行される"]
-    L --> H
+    alt リンククリック・URL遷移
+        User->>RR: 別ルートへ遷移
+        RR->>Handler: loaderを呼ぶ
+        Handler->>Rails: fetch(GET)
+        Rails-->>Handler: JSONを返す
+        Handler-->>RR: 取得結果をreturn
+        RR->>View: useLoaderData()で画面に反映
+    else "&lt;Form&gt;送信(画面遷移あり)"
+        User->>RR: フォーム送信
+        RR->>Handler: actionを呼ぶ
+        Handler->>Rails: fetch(POST/PATCH/DELETE)
+        Rails-->>Handler: JSONを返す
+        Handler-->>RR: redirect() またはエラーデータをreturn
+        Note over RR,View: redirect()なら遷移先のloaderが呼ばれる<br/>データをreturnならuseActionData()で同じ画面にエラー表示
+    else useFetcher().submit()(画面遷移なし)
+        User->>RR: fetcher.submit()
+        RR->>Handler: 同ルートのactionを呼ぶ
+        Handler->>Rails: fetch(PATCH等)
+        Rails-->>Handler: JSONを返す
+        Handler-->>RR: 結果をreturn
+        Note over RR,Handler: actionの完了後、同ルートのloaderが自動的に再実行される
+        RR->>Handler: loaderを呼ぶ
+        Handler->>Rails: fetch(GET)
+        Rails-->>Handler: JSONを返す
+        Handler-->>RR: 最新データをreturn
+        RR->>View: useLoaderData()で画面に反映(成功時は確定/失敗時はロールバック)
+    end
 ```
 
 ポイントは、**`action` が完了すると React Router が自動的に同じルートの
@@ -404,21 +421,29 @@ function TaskListLegacy() {
 状態管理の主体がどちらにあるかが異なります。
 
 ```mermaid
-flowchart LR
-    subgraph DataMode["Data Mode版(/tasks)"]
-        direction TB
-        A1["URL遷移"] --> A2["React RouterがloaderをRails APIに問い合わせる"]
-        A2 --> A3["取得完了後にコンポーネントを描画"]
-        A3 --> A4["useLoaderData()で受け取るだけ"]
-    end
+sequenceDiagram
+    actor User as ユーザー
+    participant RR as React Router
+    participant Loader as taskListLoader
+    participant Comp as TaskListコンポーネント
+    participant Rails as Rails API
 
-    subgraph Legacy["Legacy版(/tasks-legacy)"]
-        direction TB
-        B1["URL遷移"] --> B2["先にコンポーネントを描画(データはnull)"]
-        B2 --> B3["「読み込み中...」を表示"]
-        B3 --> B4["useEffect内でfetch実行"]
-        B4 --> B5["setTasksで再描画をトリガー"]
-        B5 --> B6["アンマウント済みなら更新をスキップ(cancelledフラグ)"]
+    alt Data Mode版(/tasks)
+        User->>RR: "/tasks" へ遷移
+        RR->>Loader: taskListLoader() を呼ぶ
+        Loader->>Rails: GET /api/v1/tasks
+        Rails-->>Loader: JSONを返す
+        Loader-->>RR: tasksをreturn
+        RR->>Comp: 取得完了後にコンポーネントを描画
+        Comp->>Comp: useLoaderData()でtasksを受け取るだけ
+    else Legacy版(/tasks-legacy)
+        User->>RR: "/tasks-legacy" へ遷移
+        RR->>Comp: 先にコンポーネントを描画(tasksはnull)
+        Comp->>Comp: 「読み込み中...」を表示
+        Comp->>Rails: useEffect内でfetch実行(GET /api/v1/tasks)
+        Rails-->>Comp: JSONを返す
+        Comp->>Comp: setTasksで再描画をトリガー
+        Note over Comp: アンマウント済みなら更新をスキップ(cancelledフラグ)
     end
 ```
 
