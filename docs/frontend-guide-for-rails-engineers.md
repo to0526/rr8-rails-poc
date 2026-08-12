@@ -39,17 +39,18 @@ Rails でいうと、`router.tsx` が `config/routes.rb`、`routes/` 配下の
 ブラウザ操作の種類によって、React Router がどの処理(`loader` / `action` /
 `useFetcher`)を呼び分けるかを図にすると次のようになります。
 
-図中の「React Router ランタイム(RouterProvider)」は、`router.tsx` で
-定義した設定(パスとcomponent/loader/actionの対応表)をもとに、実際に
-URL変化やフォーム送信を検知して `loader` / `action` を呼び分けたり、
-その結果をコンポーネントに渡したりする**実行時の仕組み**を指しています。
-`main.tsx` の `<RouterProvider router={router} />` がこれを起動しています。
-「React Router」というライブラリ名そのものと区別するためにこう呼んでいます。
+図中の「router」は `router.tsx` の `createBrowserRouter([...])` が返す
+`router` オブジェクトを指しています。単なる設定の一覧ではなく、URL変化や
+フォーム送信を検知して `loader` / `action` を呼び分けたり、その結果を
+コンポーネントに渡したりする**実行時の動作までを含んだ実体**です
+(`main.tsx` の `<RouterProvider router={router} />` は、この `router` を
+Reactに購読させて再描画を起こす橋渡し役)。「React Router」という
+ライブラリ名そのものと区別するため、図では `router` と表記しています。
 
 ```mermaid
 sequenceDiagram
     actor User as ユーザー
-    participant RR as "React Router ランタイム(RouterProvider)"
+    participant RR as router
     participant Handler as "loader / action"
     participant Rails as Rails API
     participant View as 画面(コンポーネント)
@@ -174,7 +175,7 @@ Rails のコントローラと違い、`loader` は **Reactコンポーネント
 ```mermaid
 sequenceDiagram
     actor User as ユーザー
-    participant RR as "React Router ランタイム(RouterProvider)"
+    participant RR as router
     participant Loader as taskShowLoader
     participant API as lib/api.ts
     participant Rails as Rails API
@@ -245,7 +246,7 @@ export async function taskShowAction({ params }: ActionFunctionArgs) {
 sequenceDiagram
     actor User as ユーザー
     participant Form as "&lt;Form method=post&gt;"
-    participant RR as "React Router ランタイム(RouterProvider)"
+    participant RR as router
     participant Action as taskNewAction
     participant API as lib/api.ts
     participant Rails as Rails API
@@ -326,7 +327,7 @@ export async function taskListAction({ request }: ActionFunctionArgs) {
 sequenceDiagram
     actor User as ユーザー
     participant Row as TaskRow
-    participant RR as "React Router ランタイム(RouterProvider)"
+    participant RR as router
     participant Action as taskListAction
     participant Rails as Rails API
     participant Loader as taskListLoader
@@ -430,7 +431,7 @@ function TaskListLegacy() {
 ```mermaid
 sequenceDiagram
     actor User as ユーザー
-    participant RR as "React Router ランタイム(RouterProvider)"
+    participant RR as router
     participant Loader as taskListLoader
     participant Comp as TaskListコンポーネント
     participant Rails as Rails API
