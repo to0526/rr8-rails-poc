@@ -53,7 +53,7 @@ sequenceDiagram
     participant RR as router
     participant Handler as "loader / action"
     participant Rails as Rails API
-    participant View as 画面(コンポーネント)
+    participant View as "画面(コンポーネント)"
 
     alt リンククリック・URL遷移
         User->>RR: 別ルートへ遷移
@@ -62,14 +62,14 @@ sequenceDiagram
         Rails-->>Handler: JSONを返す
         Handler-->>RR: 取得結果をreturn
         RR->>View: useLoaderData()で画面に反映
-    else "&lt;Form&gt;送信(画面遷移あり)"
+    else "フォーム送信(画面遷移あり)"
         User->>RR: フォーム送信
         RR->>Handler: actionを呼ぶ
         Handler->>Rails: fetch(POST/PATCH/DELETE)
         Rails-->>Handler: JSONを返す
         Handler-->>RR: redirect() またはエラーデータをreturn
         Note over RR,View: redirect()なら遷移先のloaderが呼ばれる<br/>データをreturnならuseActionData()で同じ画面にエラー表示
-    else useFetcher().submit()(画面遷移なし)
+    else "useFetcher送信(画面遷移なし)"
         User->>RR: fetcher.submit()
         RR->>Handler: 同ルートのactionを呼ぶ
         Handler->>Rails: fetch(PATCH等)
@@ -245,7 +245,7 @@ export async function taskShowAction({ params }: ActionFunctionArgs) {
 ```mermaid
 sequenceDiagram
     actor User as ユーザー
-    participant Form as "&lt;Form method=post&gt;"
+    participant Form as "Formタグ(method=post)"
     participant RR as router
     participant Action as taskNewAction
     participant API as lib/api.ts
