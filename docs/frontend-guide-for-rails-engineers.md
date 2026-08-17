@@ -496,7 +496,132 @@ Next.jsの主な強みであるSEO対策・初期表示の高速化は、社内�
 監視対象の増加)に見合わないと判断しています。SEOやSSRが必要になった場合は
 改めてFramework Modeへの移行を検討する、という位置付けです(CLAUDE.md参照)。
 
-## 11. CSS・画像の扱い
+## 11. ログイン処理について(オプション要件・将来の検討事項)
+
+本PoCは CLAUDE.md に明記の通り「認証は一旦なし」がスコープであり、ここまでの内容は
+すべて未ログイン前提です。ただし将来的な採用検討の材料として、**具体的なシナリオを
+想定したときにログイン処理をどう設計するか**を整理しておきます。
+
+想定シナリオ: 既存の本番Railsサービス `exampl.com`(ビュー・セッションCookieによる
+ログイン機能を既に持つ)に対し、`exampl.com/new_page` という1画面だけを
+React Router v8(Data Mode)で新規に作る場合。
+
+### 11-1. 前提: 同一オリジンでの配信を推奨する
+
+`exampl.com/new_page` は**サブドメインではなくパス**である点がポイントです。
+`app.exampl.com` のような別オリジンに切り出すのではなく、リバースプロキシ
+(nginx/ALBのパスルーティング等)で `/new_page` 配下だけをビルド済みの
+React Router側に振り分ける、あるいはRails自身がビルド成果物を配信する形にして
+**同一オリジンで配信する**ことで、Cookie共有やCORSまわりの複雑さを避けられます。
+
+| | 同一オリジン配信(推奨) | 別オリジン配信(サブドメイン等) |
+|---|---|---|
+| Cookie送信 | ブラウザが自動送信(特別な設定不要) | `SameSite=None; Secure` + `credentials: 'include'` が必要 |
+| CORS設定 | 不要(そもそもクロスオリジンにならない) | `rack-cors` 側で許可オリジン・`credentials: true` の設定が必要 |
+| CSRF | 必要(11-4節参照) | 必要(さらにcrossOriginな分、設計の難易度が上がる) |
+
+本PoCの開発環境(frontend: `localhost:5173` / backend: `localhost:3000`)は
+別オリジン構成の一例ですが、認証を実装していないためこの問題が表面化していません。
+本番相当の構成を検討する際は、上表の「同一オリジン配信」を前提にするのが
+シンプルだと考えられます。
+
+### 11-2. ログイン状態の共有: セッションCookieがそのまま使える
+
+同一オリジン配信であれば、`exampl.com` の既存ログイン(Devise等によるセッション
+Cookie発行)がそのまま利用できます。ブラウザの `fetch()` は**同一オリジンへの
+リクエストであればデフォルトでCookieを送信する**(`credentials: 'same-origin'` が
+既定値)ため、`credentials: 'include'` を明示しなくても `loader` / `action` からの
+APIリクエストにログイン中のセッションCookieが自動的に付与されます。
+
+現在の `frontend/src/lib/api.ts` はクロスオリジン(別オリジン)向けの構成のため
+`credentials` オプションを指定していませんが、同一オリジン配信に切り替えた場合は
+コードを変更しなくてもCookieが送信されます(意図を明示したい場合は
+`credentials: 'same-origin'` を書いてもよいでしょう)。これはトークンをlocalStorageで
+管理したりOAuthフローを組んだりする必要がない、という意味でこの構成の大きな利点です。
+
+### 11-3. 未ログイン時のハンドリング(loaderでの認可チェック)
+
+`loader` の冒頭で現在のユーザー情報を返すAPI(例: `GET /api/v1/me`)を呼び、
+401が返ってきたら未ログインと判断してRailsの既存ログイン画面へ遷移させる、
+という設計が考えられます。
+
+```tsx
+// frontend/src/routes/new-page.tsx (将来のイメージ。未実装)
+export async function newPageLoader() {
+  const response = await fetch('/api/v1/me') // 同一オリジンなのでCookieが自動送信される
+
+  if (response.status === 401) {
+    // Railsのログイン画面はReact Routerの管理外にあるため、
+    // redirect() ではなく素のブラウザ遷移(フルページリロード)で移動する
+    window.location.href = '/login'
+    return null
+  }
+
+  // ...ログイン済みの場合の処理
+}
+```
+
+ここでの注意点は、React Routerの `redirect()` は**ルーター管理下のクライアントサイド
+遷移**であり、ルーターの外にあるRailsのログイン画面(サーバーサイドでレンダリングされる
+`/login`)への遷移には使えないことです。`window.location.href` のような素のブラウザ
+遷移を使う必要があります。
+
+### 11-4. CSRFトークンの扱い
+
+セッションCookieによる認証は、ブラウザがCookieを自動送信してしまう性質上、
+状態変更系のリクエスト(`action` からのPOST/PATCH/DELETE)がCSRF(クロスサイト
+リクエストフォージェリ)の対象になり得ます。Railsの `--api` モードはデフォルトで
+CSRF保護(`protect_from_forgery`)を含まないため、Cookieセッション認証を導入する際は
+別途CSRF対策を組み込む必要があります。
+
+具体的には、CSRFトークンを何らかの形でフロントエンドに渡し(例:
+ページに埋め込む `<meta name="csrf-token">` タグや専用のトークン取得API)、
+`lib/api.ts` 側で `X-CSRF-Token` ヘッダとして付与し、Rails側で検証する、という
+方式が一般的です。ただし具体的な実装方式(どのエンドポイントでトークンを配布するか等)は
+本ドキュメントの時点では未検討で、実装時に別途設計が必要な項目として残しておきます。
+
+### 11-5. 処理フロー図
+
+```mermaid
+sequenceDiagram
+    actor User as ユーザー
+    participant RR as router
+    participant Loader as newPageLoader
+    participant Rails as Rails(exampl.com)
+
+    User->>RR: "/new_page" へアクセス
+    RR->>Loader: newPageLoader() を呼ぶ
+    Loader->>Rails: GET /api/v1/me(同一オリジンなのでCookieが自動送信される)
+
+    alt ログイン済み(200)
+        Rails-->>Loader: 200 OK + current_user情報
+        Loader-->>RR: 画面表示に必要なデータをreturn
+        RR->>User: /new_page を描画
+    else 未ログイン(401)
+        Rails-->>Loader: 401 Unauthorized
+        Loader->>User: window.location.hrefで/loginへフルページ遷移
+        User->>Rails: 既存のログイン画面でログイン(Cookie発行)
+        User->>RR: 改めて"/new_page"へアクセス
+        Note over RR,Rails: 発行済みのCookieが送信されるため、以降は200になる
+    end
+```
+
+### 11-6. Railsの概念との対応表
+
+| Rails | React Router側での扱い |
+|---|---|
+| `before_action :authenticate_user!` | `loader` 冒頭で `/api/v1/me` を呼び、401なら未ログイン扱いにする |
+| `current_user` | 認証チェック用APIのレスポンスとして取得し、必要なら画面に渡す |
+| `protect_from_forgery` | `lib/api.ts` でCSRFトークンをヘッダに付与する(要設計、11-4節参照) |
+| Deviseのログイン画面(`/login`) | React Routerの管理外。`window.location.href` でフルページ遷移する |
+| セッションCookie | 同一オリジン配信であれば`fetch`のデフォルト挙動で自動送信される |
+
+以上はあくまで設計上の検討メモであり、本PoCでは検証していません。
+[poc-summary.md](./poc-summary.md) の懸念点にも記載の通り、実際に採用する際は
+このドキュメントの内容をもとに、認証を絡めた `loader` / `action` の挙動を
+改めて別PRで検証する必要があります。
+
+## 12. CSS・画像の扱い
 
 - スタイルはルート単位で CSS Modules(`task-list.module.css` など)を使用。
   クラス名の衝突を気にせず書けます。
@@ -508,7 +633,7 @@ Next.jsの主な強みであるSEO対策・初期表示の高速化は、社内�
   - 実運用では基本的に `src/assets/` + import 方式を標準にするのが良さそう、
     というのが検証時の所感です(詳細は [poc-summary.md](./poc-summary.md) 参照)。
 
-## 12. テスト: Vitest + Testing Library
+## 13. テスト: Vitest + Testing Library
 
 `loader` / `action` はプレーンな非同期関数として `export` しているため、
 React Router のルーティング機構を経由せずに単体テストできます
@@ -519,7 +644,7 @@ React Router のルーティング機構を経由せずに単体テストでき�
 docker compose exec frontend npm test
 ```
 
-## 13. まとめ
+## 14. まとめ
 
 - ルーティング・データ取得・フォーム処理の宣言場所が `router.tsx` に
   集約されるため、「この画面が何をしているか」を追いやすい
