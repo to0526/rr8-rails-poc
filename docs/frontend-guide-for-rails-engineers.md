@@ -739,7 +739,120 @@ React Router のルーティング機構を経由せずに単体テストでき�
 docker compose exec frontend npm test
 ```
 
-## 15. まとめ
+## 15. エラーバウンダリ: 想定外エラーの扱い(`rescue_from`相当)
+
+ここまでの `loader` / `action` は、Rails APIが422を返すケースなど想定内のエラーは
+`status` を見て個別にハンドリングしてきましたが(5節参照)、それ以外の想定外の
+エラー(404、500、通信エラーなど)は特に何もキャッチしておらず、React Router
+標準のデフォルトエラー画面に任せる形になっています(4節の「タスクが存在しない
+場合は `apiGet` が `ApiError` を投げ…React Routerのデフォルトのエラー画面に
+委ねられます」という記述の通りです)。
+
+このデフォルト画面を、ルートごとに独自のエラー画面に差し替える仕組みが
+**エラーバウンダリ**(`ErrorBoundary`)です。Railsで言えば、`ApplicationController`
+の `rescue_from` でコントローラ単位・例外クラス単位にエラーレスポンスを
+カスタマイズする仕組みに近いイメージです。
+
+```tsx
+// frontend/src/routes/task-show.tsx (追加イメージ。現状のPoCでは未使用)
+import { isRouteErrorResponse, useRouteError } from 'react-router'
+
+// loader/action内で投げられた例外や、コンポーネントのレンダリング中に
+//発生したエラーを、このコンポーネントがキャッチして表示する。
+function TaskShowErrorBoundary() {
+  const error = useRouteError()
+
+  // レスポンス由来のエラー(ステータスコード付き)かどうかを判定できる
+  if (isRouteErrorResponse(error) && error.status === 404) {
+    return <p>タスクが見つかりませんでした</p>
+  }
+
+  return <p>予期しないエラーが発生しました</p>
+}
+
+export const taskShowRoute = {
+  path: '/tasks/:id',
+  Component: TaskShow,
+  loader: taskShowLoader,
+  action: taskShowAction,
+  ErrorBoundary: TaskShowErrorBoundary, // このルート配下で発生したエラーをキャッチ
+}
+```
+
+ポイントは、`ErrorBoundary` を指定していないルートで発生したエラーは、
+**1つ上の階層のルートの `ErrorBoundary`(なければさらに上……)にバブリングしていく**
+ことです。Railsの `rescue_from` が `ApplicationController` に書けば全コントローラに
+継承され、個別のコントローラで上書きもできるのと似た構造だとイメージすると
+理解しやすいです(16節で説明するネスト構造とも関係します)。
+
+| Rails | React Router v8 (Data Mode) |
+|---|---|
+| `rescue_from StandardError`(`ApplicationController`) | ルートツリー最上位(または未指定時)のデフォルトエラー画面 |
+| コントローラ単位の `rescue_from` 上書き | 特定のルートに `ErrorBoundary` を個別指定 |
+| `render status: 404` | `useRouteError()` + `isRouteErrorResponse()` でステータスに応じて表示を出し分け |
+
+本PoCでは `ErrorBoundary` を明示的に設定しておらず、すべてReact Router標準の
+デフォルトエラー画面に委ねています。実運用では、少なくとも404(存在しないID)・
+500(サーバーエラー)・通信エラーの3パターン程度は画面ごとに用意しておくのが
+良さそうです。
+
+## 16. `Outlet`: 共通レイアウトのネスト構造
+
+これまでのルート定義(`router.tsx`)は `/tasks` ・ `/tasks/new` ・ `/tasks/:id` が
+それぞれ独立したルートとして並んでおり、共通のヘッダーやフッターを持たせる仕組みが
+ありません。複数の画面で共通のレイアウト(ナビゲーション、ヘッダー、フッターなど)を
+持たせたい場合は、**ネストしたルート + `Outlet`** を使います。
+
+Railsで言えば、`application.html.erb` の `<%= yield %>` の位置に各アクションの
+ビューが差し込まれる仕組みに近いです。`Outlet` が `yield` の役割を果たし、
+子ルートに対応するコンポーネントがそこに描画されます。
+
+```tsx
+// frontend/src/routes/layout.tsx (追加イメージ。現状のPoCでは未使用)
+import { Outlet } from 'react-router'
+
+function Layout() {
+  return (
+    <>
+      <Header /> {/* 全画面共通のヘッダー */}
+      <Outlet />  {/* 現在のURLに対応する子ルートのコンポーネントがここに描画される */}
+      <Footer /> {/* 全画面共通のフッター */}
+    </>
+  )
+}
+```
+
+```tsx
+// frontend/src/router.tsx (ネスト構造にする場合のイメージ)
+export const router = createBrowserRouter([
+  {
+    Component: Layout,
+    children: [
+      { path: '/tasks', Component: TaskList, loader: taskListLoader, action: taskListAction },
+      { path: '/tasks/new', Component: TaskNew, action: taskNewAction },
+      { path: '/tasks/:id', Component: TaskShow, loader: taskShowLoader, action: taskShowAction },
+    ],
+  },
+])
+```
+
+| Rails | React Router v8 (Data Mode) |
+|---|---|
+| `application.html.erb` の `<%= yield %>` | 親ルートの `<Outlet />` |
+| `_header.erb` / `_footer.erb` などのパーシャル | `Layout` コンポーネント内の共通UI |
+| ネストした `resources`(`resources :tasks do ... end`) | `children` によるネストしたルート定義 |
+
+15節の `ErrorBoundary` もこのネスト構造に沿ってバブリングするため、たとえば
+`Layout` に共通の `ErrorBoundary` を1つ置きつつ、`/tasks/:id` だけ個別の
+`ErrorBoundary` で上書きする、という組み合わせ方もできます。
+
+11節で触れた「`exampl.com/new_page` に既存サービスと統一感のあるヘッダー/フッターを
+持たせたい」というケースでは、この `Layout` コンポーネント側にexampl.com既存の
+デザインに合わせたヘッダー/フッターを実装する形になります(Rails側がレンダリング
+する既存ページのヘッダー/フッターとどう見た目を揃えるかは、デザインシステムの
+共有方法も含めて別途の検討が必要です)。
+
+## 17. まとめ
 
 - ルーティング・データ取得・フォーム処理の宣言場所が `router.tsx` に
   集約されるため、「この画面が何をしているか」を追いやすい
