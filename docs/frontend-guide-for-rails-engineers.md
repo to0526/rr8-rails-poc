@@ -460,7 +460,43 @@ Data Mode版は「取得してから描画する」、Legacy版は「先に描�
 ローディング状態やキャンセル処理を自前で書く必要があるかどうかの差に
 つながっています。
 
-## 10. CSS・画像の扱い
+## 10. Next.js との比較: なぜ Framework Mode(App Router)を選ばなかったか
+
+「フロントエンドのモダンな構成」というと Next.js(App Router)を思い浮かべる方も
+多いと思うので、このリポジトリが React Router v8 の **Data Mode** を選んでいる
+理由を Next.js との対比で補足します。Framework Mode(Next.js に近い SSR構成)を
+採用しない方針は [CLAUDE.md](../CLAUDE.md) にも明記しているスコープ外事項です。
+
+| 観点 | Next.js (App Router) | React Router v8 (Data Mode) |
+|---|---|---|
+| 実行環境 | Node.js サーバーが必須(Vercel or 自前サーバーでSSR実行) | ビルド後は静的ファイル一式。Node.jsサーバー不要でNginx等で配信可 |
+| ルーティング定義方法 | `app/` 配下のディレクトリ構造がそのままルーティングになる(ファイルベース) | `router.tsx` に配列でパスを明示的に列挙(集中管理) |
+| データ取得 | Server Component 内で直接 DB/ORM を呼べる(`await db.query()` 等) | `loader` は必ず `fetch` 経由でRails APIを呼ぶ(HTTP境界を越える) |
+| 更新処理 | Server Actions(`"use server"`)がクライアントから直接呼べるRPC関数になる。フロントとバックエンドの境界が曖昧になる | `action` は `fetch` でRails APIにリクエストを送るだけ。処理の実体は常にRails側 |
+| フロント/バックエンドの分離 | Server Component / Server Action がバックエンド処理を兼ねるため、Railsのような「別プロセスのAPI」という区分けが薄れる | フロントは常にSPA、バックエンドは常にRails API、という役割分担が明確 |
+| このリポジトリでの位置付け | 不採用(SSR・Node.jsサーバー運用は今回のPoCのスコープ外) | 採用。既存のRails(API)+フロントSPAという構成をそのまま踏襲できる |
+
+ポイントは、**Next.js は「フロントエンドとバックエンドを1つのNode.jsアプリに
+統合する」方向の設計**であるのに対し、**React Router v8 の Data Mode は
+「Railsが担ってきたAPIサーバーの役割はそのままに、フロントエンドだけを
+SPAとして差し替える」方向の設計**である点です。このリポジトリは後者の
+構成(Rails API + フロントSPA)を前提にしているため、`loader` / `action` は
+Server Component / Server Action のように直接データベースや業務ロジックに
+アクセスすることはなく、必ず `lib/api.ts` を経由してRails APIにHTTPリクエストを
+送ります(3〜5節で説明した内容と同じです)。
+
+言い換えると、Next.jsの`loader`相当(Server Component)は「Railsのコントローラを
+JavaScript側に持ってくる」構成に近く、React Router v8の`loader`は「Railsの
+コントローラはRails側に残したまま、それを呼び出すクライアントを差し替える」
+構成に近い、と捉えると馴染みやすいと思います。
+
+また、SSR(サーバーサイドレンダリング)が不要である点も選定理由の一つです。
+Next.jsの主な強みであるSEO対策・初期表示の高速化は、社内向け管理画面のような
+用途では優先度が低く、Node.jsサーバーの運用コスト(デプロイ・スケーリング・
+監視対象の増加)に見合わないと判断しています。SEOやSSRが必要になった場合は
+改めてFramework Modeへの移行を検討する、という位置付けです(CLAUDE.md参照)。
+
+## 11. CSS・画像の扱い
 
 - スタイルはルート単位で CSS Modules(`task-list.module.css` など)を使用。
   クラス名の衝突を気にせず書けます。
@@ -472,7 +508,7 @@ Data Mode版は「取得してから描画する」、Legacy版は「先に描�
   - 実運用では基本的に `src/assets/` + import 方式を標準にするのが良さそう、
     というのが検証時の所感です(詳細は [poc-summary.md](./poc-summary.md) 参照)。
 
-## 11. テスト: Vitest + Testing Library
+## 12. テスト: Vitest + Testing Library
 
 `loader` / `action` はプレーンな非同期関数として `export` しているため、
 React Router のルーティング機構を経由せずに単体テストできます
@@ -483,7 +519,7 @@ React Router のルーティング機構を経由せずに単体テストでき�
 docker compose exec frontend npm test
 ```
 
-## 12. まとめ
+## 13. まとめ
 
 - ルーティング・データ取得・フォーム処理の宣言場所が `router.tsx` に
   集約されるため、「この画面が何をしているか」を追いやすい
