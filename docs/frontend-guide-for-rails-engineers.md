@@ -621,7 +621,102 @@ sequenceDiagram
 このドキュメントの内容をもとに、認証を絡めた `loader` / `action` の挙動を
 改めて別PRで検証する必要があります。
 
-## 12. CSS・画像の扱い
+## 12. デプロイについて(オプション要件・将来の検討事項)
+
+11節(ログイン処理)では「同一オリジンでの配信を推奨する」と述べましたが、
+これを実現するには実際にどうビルド成果物を配置すればよいのでしょうか。
+本PoCでは本番デプロイ設定は未実装・スコープ外(CLAUDE.md参照)ですが、
+将来検討する際の指針として整理しておきます。
+
+### 12-1. ビルド成果物は静的ファイル一式
+
+React Router v8 の Data Mode はCSR(クライアントサイドレンダリング)のため、
+`npm run build`(内部的には `vite build`)を実行すると `frontend/dist/` に
+
+- `index.html`
+- ハッシュ付きファイル名のJS/CSS(`assets/index-XXXX.js` など)
+
+が出力されるだけの、素の静的ファイル一式になります。10節(Next.jsとの比較)で
+触れた通り、Next.jsのSSRのように実行時にNode.jsプロセスを常駐させる必要はなく、
+**ビルドが完了すれば、あとは静的ファイルを配信するだけ**です。
+
+Railsで言えば `rails assets:precompile` によって `public/assets/` 配下に
+フィンガープリント付きの成果物が生成される仕組みに近いイメージですが、対象が
+CSS/JSだけでなく `index.html`(アプリの土台)も含む点が異なります。
+
+### 12-2. 配置パターン: Railsが配信 or リバースプロキシ/CDNで分離
+
+11節の「同一オリジン配信」を実現する具体的な方法としては、主に2パターンが
+考えられます。いずれも `exampl.com` という同一オリジンを維持できます。
+
+| パターン | 概要 |
+|---|---|
+| a. Railsが配信 | ビルド成果物を `public/` 配下等に配置し、Rails自身が `/new_page` へのリクエストに対して `index.html` を返す |
+| b. リバースプロキシ/CDNで分離 | nginxやALB等のパスベースルーティングで `/new_page/*` を静的ホスティング(S3+CloudFrontなど)に振り分け、`/api/*` はRailsに振り分ける |
+
+### 12-3. クライアントサイドルーティングのフォールバック(キャッチオール)
+
+`createBrowserRouter` はブラウザのHistory APIでURLを書き換えているだけなので、
+`/new_page/xxx` のようなサブパスに直接アクセスしたり、ブラウザをリロードしたり
+した場合、サーバー側には対応する実ファイルが存在しません。そのため、
+**`/new_page` 配下のパスはすべて `index.html` を返す「キャッチオール」設定**が
+必要になります。
+
+```ruby
+# config/routes.rb (将来のイメージ。未実装)
+# "/new_page" 配下のパスはすべて index.html を返し、
+# 実際のルーティング(どの画面を出すか)はブラウザ側のReact Routerに任せる
+get '/new_page', to: 'new_page#index'
+get '/new_page/*path', to: 'new_page#index'
+```
+
+Railsの通常のルーティングは「1つのURLに1つのアクションが対応する」設計ですが、
+SPA配下では「配下のパスはすべて同じ`index.html`を返し、実際の画面切り替えは
+クライアント側のJavaScriptが行う」という発想の違いがある点がポイントです。
+
+### 12-4. キャッシュ戦略
+
+- ハッシュ付きのJS/CSSはファイル内容が変わればファイル名も変わるため、
+  長期キャッシュ(`Cache-Control: public, max-age=31536000, immutable` など)
+  にして問題ありません。
+- 一方 `index.html` はデプロイのたびに参照するJS/CSSのファイル名が変わるため、
+  短期キャッシュまたは `no-cache` にしておく必要があります。
+  (`index.html` が長期キャッシュされてしまうと、新しいビルドをデプロイしても
+  ブラウザが古いJS/CSSを参照し続けてしまいます)
+
+### 12-5. ビルド〜配信の流れ
+
+```mermaid
+sequenceDiagram
+    actor Dev as 開発者 / CI
+    participant Build as vite build
+    participant Server as Rails または CDN
+    actor User as ユーザー
+
+    Dev->>Build: npm run build を実行
+    Build-->>Dev: dist/ に index.html + ハッシュ付きJS/CSSを出力
+    Dev->>Server: 成果物を配置(publicへコピー、またはCDNへアップロード)
+
+    User->>Server: "exampl.com/new_page" にアクセス
+    Server-->>User: index.html を返す(キャッチオール設定により)
+    User->>Server: index.htmlが参照するJS/CSSを取得
+    Note over User: ブラウザ上でReact Routerが起動し、以降は11節のログインチェック等が動く
+```
+
+### 12-6. Railsの概念との対応表
+
+| Rails | フロントエンドのデプロイ |
+|---|---|
+| `public/assets/`(フィンガープリント付き成果物) | `vite build` が出力する `dist/` 配下のハッシュ付きJS/CSS |
+| `rails assets:precompile` | `npm run build`(`vite build`) |
+| 通常のルーティング(1URL=1アクション) | SPA配下は「キャッチオール」で `index.html` を返す設定が必要 |
+| Node.jsサーバーの常駐が前提の構成(Next.jsのSSR等) | 不要。ビルド後は静的ファイル配信のみで完結する |
+
+以上はあくまで設計上の検討メモであり、本PoCでは検証していません。実際に採用する
+際は、ビルド〜配信の実運用フロー(CI/CDへの組み込みを含む)を別PRで検証する
+必要があります。
+
+## 13. CSS・画像の扱い
 
 - スタイルはルート単位で CSS Modules(`task-list.module.css` など)を使用。
   クラス名の衝突を気にせず書けます。
@@ -633,7 +728,7 @@ sequenceDiagram
   - 実運用では基本的に `src/assets/` + import 方式を標準にするのが良さそう、
     というのが検証時の所感です(詳細は [poc-summary.md](./poc-summary.md) 参照)。
 
-## 13. テスト: Vitest + Testing Library
+## 14. テスト: Vitest + Testing Library
 
 `loader` / `action` はプレーンな非同期関数として `export` しているため、
 React Router のルーティング機構を経由せずに単体テストできます
@@ -644,7 +739,7 @@ React Router のルーティング機構を経由せずに単体テストでき�
 docker compose exec frontend npm test
 ```
 
-## 14. まとめ
+## 15. まとめ
 
 - ルーティング・データ取得・フォーム処理の宣言場所が `router.tsx` に
   集約されるため、「この画面が何をしているか」を追いやすい
