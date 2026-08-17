@@ -621,7 +621,102 @@ sequenceDiagram
 このドキュメントの内容をもとに、認証を絡めた `loader` / `action` の挙動を
 改めて別PRで検証する必要があります。
 
-## 12. CSS・画像の扱い
+## 12. デプロイについて(オプション要件・将来の検討事項)
+
+11節(ログイン処理)では「同一オリジンでの配信を推奨する」と述べましたが、
+これを実現するには実際にどうビルド成果物を配置すればよいのでしょうか。
+本PoCでは本番デプロイ設定は未実装・スコープ外(CLAUDE.md参照)ですが、
+将来検討する際の指針として整理しておきます。
+
+### 12-1. ビルド成果物は静的ファイル一式
+
+React Router v8 の Data Mode はCSR(クライアントサイドレンダリング)のため、
+`npm run build`(内部的には `vite build`)を実行すると `frontend/dist/` に
+
+- `index.html`
+- ハッシュ付きファイル名のJS/CSS(`assets/index-XXXX.js` など)
+
+が出力されるだけの、素の静的ファイル一式になります。10節(Next.jsとの比較)で
+触れた通り、Next.jsのSSRのように実行時にNode.jsプロセスを常駐させる必要はなく、
+**ビルドが完了すれば、あとは静的ファイルを配信するだけ**です。
+
+Railsで言えば `rails assets:precompile` によって `public/assets/` 配下に
+フィンガープリント付きの成果物が生成される仕組みに近いイメージですが、対象が
+CSS/JSだけでなく `index.html`(アプリの土台)も含む点が異なります。
+
+### 12-2. 配置パターン: Railsが配信 or リバースプロキシ/CDNで分離
+
+11節の「同一オリジン配信」を実現する具体的な方法としては、主に2パターンが
+考えられます。いずれも `exampl.com` という同一オリジンを維持できます。
+
+| パターン | 概要 |
+|---|---|
+| a. Railsが配信 | ビルド成果物を `public/` 配下等に配置し、Rails自身が `/new_page` へのリクエストに対して `index.html` を返す |
+| b. リバースプロキシ/CDNで分離 | nginxやALB等のパスベースルーティングで `/new_page/*` を静的ホスティング(S3+CloudFrontなど)に振り分け、`/api/*` はRailsに振り分ける |
+
+### 12-3. クライアントサイドルーティングのフォールバック(キャッチオール)
+
+`createBrowserRouter` はブラウザのHistory APIでURLを書き換えているだけなので、
+`/new_page/xxx` のようなサブパスに直接アクセスしたり、ブラウザをリロードしたり
+した場合、サーバー側には対応する実ファイルが存在しません。そのため、
+**`/new_page` 配下のパスはすべて `index.html` を返す「キャッチオール」設定**が
+必要になります。
+
+```ruby
+# config/routes.rb (将来のイメージ。未実装)
+# "/new_page" 配下のパスはすべて index.html を返し、
+# 実際のルーティング(どの画面を出すか)はブラウザ側のReact Routerに任せる
+get '/new_page', to: 'new_page#index'
+get '/new_page/*path', to: 'new_page#index'
+```
+
+Railsの通常のルーティングは「1つのURLに1つのアクションが対応する」設計ですが、
+SPA配下では「配下のパスはすべて同じ`index.html`を返し、実際の画面切り替えは
+クライアント側のJavaScriptが行う」という発想の違いがある点がポイントです。
+
+### 12-4. キャッシュ戦略
+
+- ハッシュ付きのJS/CSSはファイル内容が変わればファイル名も変わるため、
+  長期キャッシュ(`Cache-Control: public, max-age=31536000, immutable` など)
+  にして問題ありません。
+- 一方 `index.html` はデプロイのたびに参照するJS/CSSのファイル名が変わるため、
+  短期キャッシュまたは `no-cache` にしておく必要があります。
+  (`index.html` が長期キャッシュされてしまうと、新しいビルドをデプロイしても
+  ブラウザが古いJS/CSSを参照し続けてしまいます)
+
+### 12-5. ビルド〜配信の流れ
+
+```mermaid
+sequenceDiagram
+    actor Dev as 開発者 / CI
+    participant Build as vite build
+    participant Server as Rails または CDN
+    actor User as ユーザー
+
+    Dev->>Build: npm run build を実行
+    Build-->>Dev: dist/ に index.html + ハッシュ付きJS/CSSを出力
+    Dev->>Server: 成果物を配置(publicへコピー、またはCDNへアップロード)
+
+    User->>Server: "exampl.com/new_page" にアクセス
+    Server-->>User: index.html を返す(キャッチオール設定により)
+    User->>Server: index.htmlが参照するJS/CSSを取得
+    Note over User: ブラウザ上でReact Routerが起動し、以降は11節のログインチェック等が動く
+```
+
+### 12-6. Railsの概念との対応表
+
+| Rails | フロントエンドのデプロイ |
+|---|---|
+| `public/assets/`(フィンガープリント付き成果物) | `vite build` が出力する `dist/` 配下のハッシュ付きJS/CSS |
+| `rails assets:precompile` | `npm run build`(`vite build`) |
+| 通常のルーティング(1URL=1アクション) | SPA配下は「キャッチオール」で `index.html` を返す設定が必要 |
+| Node.jsサーバーの常駐が前提の構成(Next.jsのSSR等) | 不要。ビルド後は静的ファイル配信のみで完結する |
+
+以上はあくまで設計上の検討メモであり、本PoCでは検証していません。実際に採用する
+際は、ビルド〜配信の実運用フロー(CI/CDへの組み込みを含む)を別PRで検証する
+必要があります。
+
+## 13. CSS・画像の扱い
 
 - スタイルはルート単位で CSS Modules(`task-list.module.css` など)を使用。
   クラス名の衝突を気にせず書けます。
@@ -633,7 +728,7 @@ sequenceDiagram
   - 実運用では基本的に `src/assets/` + import 方式を標準にするのが良さそう、
     というのが検証時の所感です(詳細は [poc-summary.md](./poc-summary.md) 参照)。
 
-## 13. テスト: Vitest + Testing Library
+## 14. テスト: Vitest + Testing Library
 
 `loader` / `action` はプレーンな非同期関数として `export` しているため、
 React Router のルーティング機構を経由せずに単体テストできます
@@ -644,7 +739,120 @@ React Router のルーティング機構を経由せずに単体テストでき�
 docker compose exec frontend npm test
 ```
 
-## 14. まとめ
+## 15. エラーバウンダリ: 想定外エラーの扱い(`rescue_from`相当)
+
+ここまでの `loader` / `action` は、Rails APIが422を返すケースなど想定内のエラーは
+`status` を見て個別にハンドリングしてきましたが(5節参照)、それ以外の想定外の
+エラー(404、500、通信エラーなど)は特に何もキャッチしておらず、React Router
+標準のデフォルトエラー画面に任せる形になっています(4節の「タスクが存在しない
+場合は `apiGet` が `ApiError` を投げ…React Routerのデフォルトのエラー画面に
+委ねられます」という記述の通りです)。
+
+このデフォルト画面を、ルートごとに独自のエラー画面に差し替える仕組みが
+**エラーバウンダリ**(`ErrorBoundary`)です。Railsで言えば、`ApplicationController`
+の `rescue_from` でコントローラ単位・例外クラス単位にエラーレスポンスを
+カスタマイズする仕組みに近いイメージです。
+
+```tsx
+// frontend/src/routes/task-show.tsx (追加イメージ。現状のPoCでは未使用)
+import { isRouteErrorResponse, useRouteError } from 'react-router'
+
+// loader/action内で投げられた例外や、コンポーネントのレンダリング中に
+//発生したエラーを、このコンポーネントがキャッチして表示する。
+function TaskShowErrorBoundary() {
+  const error = useRouteError()
+
+  // レスポンス由来のエラー(ステータスコード付き)かどうかを判定できる
+  if (isRouteErrorResponse(error) && error.status === 404) {
+    return <p>タスクが見つかりませんでした</p>
+  }
+
+  return <p>予期しないエラーが発生しました</p>
+}
+
+export const taskShowRoute = {
+  path: '/tasks/:id',
+  Component: TaskShow,
+  loader: taskShowLoader,
+  action: taskShowAction,
+  ErrorBoundary: TaskShowErrorBoundary, // このルート配下で発生したエラーをキャッチ
+}
+```
+
+ポイントは、`ErrorBoundary` を指定していないルートで発生したエラーは、
+**1つ上の階層のルートの `ErrorBoundary`(なければさらに上……)にバブリングしていく**
+ことです。Railsの `rescue_from` が `ApplicationController` に書けば全コントローラに
+継承され、個別のコントローラで上書きもできるのと似た構造だとイメージすると
+理解しやすいです(16節で説明するネスト構造とも関係します)。
+
+| Rails | React Router v8 (Data Mode) |
+|---|---|
+| `rescue_from StandardError`(`ApplicationController`) | ルートツリー最上位(または未指定時)のデフォルトエラー画面 |
+| コントローラ単位の `rescue_from` 上書き | 特定のルートに `ErrorBoundary` を個別指定 |
+| `render status: 404` | `useRouteError()` + `isRouteErrorResponse()` でステータスに応じて表示を出し分け |
+
+本PoCでは `ErrorBoundary` を明示的に設定しておらず、すべてReact Router標準の
+デフォルトエラー画面に委ねています。実運用では、少なくとも404(存在しないID)・
+500(サーバーエラー)・通信エラーの3パターン程度は画面ごとに用意しておくのが
+良さそうです。
+
+## 16. `Outlet`: 共通レイアウトのネスト構造
+
+これまでのルート定義(`router.tsx`)は `/tasks` ・ `/tasks/new` ・ `/tasks/:id` が
+それぞれ独立したルートとして並んでおり、共通のヘッダーやフッターを持たせる仕組みが
+ありません。複数の画面で共通のレイアウト(ナビゲーション、ヘッダー、フッターなど)を
+持たせたい場合は、**ネストしたルート + `Outlet`** を使います。
+
+Railsで言えば、`application.html.erb` の `<%= yield %>` の位置に各アクションの
+ビューが差し込まれる仕組みに近いです。`Outlet` が `yield` の役割を果たし、
+子ルートに対応するコンポーネントがそこに描画されます。
+
+```tsx
+// frontend/src/routes/layout.tsx (追加イメージ。現状のPoCでは未使用)
+import { Outlet } from 'react-router'
+
+function Layout() {
+  return (
+    <>
+      <Header /> {/* 全画面共通のヘッダー */}
+      <Outlet />  {/* 現在のURLに対応する子ルートのコンポーネントがここに描画される */}
+      <Footer /> {/* 全画面共通のフッター */}
+    </>
+  )
+}
+```
+
+```tsx
+// frontend/src/router.tsx (ネスト構造にする場合のイメージ)
+export const router = createBrowserRouter([
+  {
+    Component: Layout,
+    children: [
+      { path: '/tasks', Component: TaskList, loader: taskListLoader, action: taskListAction },
+      { path: '/tasks/new', Component: TaskNew, action: taskNewAction },
+      { path: '/tasks/:id', Component: TaskShow, loader: taskShowLoader, action: taskShowAction },
+    ],
+  },
+])
+```
+
+| Rails | React Router v8 (Data Mode) |
+|---|---|
+| `application.html.erb` の `<%= yield %>` | 親ルートの `<Outlet />` |
+| `_header.erb` / `_footer.erb` などのパーシャル | `Layout` コンポーネント内の共通UI |
+| ネストした `resources`(`resources :tasks do ... end`) | `children` によるネストしたルート定義 |
+
+15節の `ErrorBoundary` もこのネスト構造に沿ってバブリングするため、たとえば
+`Layout` に共通の `ErrorBoundary` を1つ置きつつ、`/tasks/:id` だけ個別の
+`ErrorBoundary` で上書きする、という組み合わせ方もできます。
+
+11節で触れた「`exampl.com/new_page` に既存サービスと統一感のあるヘッダー/フッターを
+持たせたい」というケースでは、この `Layout` コンポーネント側にexampl.com既存の
+デザインに合わせたヘッダー/フッターを実装する形になります(Rails側がレンダリング
+する既存ページのヘッダー/フッターとどう見た目を揃えるかは、デザインシステムの
+共有方法も含めて別途の検討が必要です)。
+
+## 17. まとめ
 
 - ルーティング・データ取得・フォーム処理の宣言場所が `router.tsx` に
   集約されるため、「この画面が何をしているか」を追いやすい
