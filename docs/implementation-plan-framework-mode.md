@@ -47,7 +47,7 @@ PR13 以降は GitHub 上の1つの PR(**#20**, ブランチ `claude/framework-m
 | PR | 内容 | ステータス |
 |---|---|---|
 | PR13 | 方針ドキュメント更新(CLAUDE.md / frontend-guide) | ✅ 完了(PR #20 にコミット済み) |
-| PR14 | `frontend/src/` → `frontend/app/` リネームのみ | 未着手 |
+| PR14 | `frontend/src/` → `frontend/app/` リネームのみ | ✅ 完了 |
 | PR15 | Framework Mode 本体の切り替え(SSR化) | 未着手 |
 | PR16 | API ベース URL のサーバー/クライアント分離 | 未着手 |
 | PR17 | 各ルートへの `meta` 追加(SEO 本丸) | 未着手 |
@@ -72,7 +72,7 @@ PR13 以降は GitHub 上の1つの PR(**#20**, ブランチ `claude/framework-m
 
 ---
 
-## PR14: `frontend/src/` → `frontend/app/` リネーム
+## PR14: `frontend/src/` → `frontend/app/` リネーム ✅完了
 **リネームのみ**を行う PR。Framework Mode 化のロジックは一切含めない
 (現状の `createBrowserRouter` ベースの Data Mode のまま、ディレクトリだけ移動)。
 

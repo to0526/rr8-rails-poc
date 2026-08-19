@@ -1,6 +1,6 @@
 // タスク一覧画面(Declarative Mode版・比較用)。
 //
-// Data Mode版(src/routes/task-list.tsx)が loader を使ってルーティング定義側で
+// Data Mode版(app/routes/task-list.tsx)が loader を使ってルーティング定義側で
 // データ取得を宣言していたのに対し、こちらは React でよく見る素朴な書き方、
 // 「コンポーネントがマウントされたら useEffect の中で fetch する」というやり方で
 // 同じ一覧を表示する。比較のため、チェックボックスによる完了切り替え
