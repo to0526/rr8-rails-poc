@@ -15,6 +15,17 @@
 //   loader版はReact Router側がこの状態を面倒みてくれるため、画面側は
 //   「取得済みのデータをどう表示するか」だけに専念できていた。
 // - そのため、同じ内容の画面でも記述量が増える。
+//
+// 【あえて meta() を export していない】
+// 他のルート(routes/top-page.tsx など)には SEO 対応として meta() を追加したが、
+// この画面には意図的に追加していない。meta() が無いルートは root.tsx の
+// meta()(固定文言の "rr8-rails-poc")がそのまま使われる = タスク一覧の中身が
+// 変わっても <title> は一切反映されない。これは「初回HTMLに実際のコンテンツが
+// 含まれないと SEO 効果が得られない」ことの分かりやすい対比として、あえてこの
+// ままにしている(Declarative Mode 側でも meta() 自体は書けるが、この画面が
+// 使うタスク一覧のデータは useEffect 実行後にしか手に入らないため、meta() を
+// 書いたところでサーバーレンダリング時点では活用できない、という点も併せて
+// 比較のポイントになる)。
 import { Link } from 'react-router'
 import { useEffect, useState } from 'react'
 import { apiGet, ApiError } from '../lib/api'

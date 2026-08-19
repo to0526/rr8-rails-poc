@@ -50,7 +50,7 @@ PR13 以降は GitHub 上の1つの PR(**#20**, ブランチ `claude/framework-m
 | PR14 | `frontend/src/` → `frontend/app/` リネームのみ | ✅ 完了 |
 | PR15 | Framework Mode 本体の切り替え(SSR化) | ✅ 完了 |
 | PR16 | API ベース URL のサーバー/クライアント分離 | ✅ 完了 |
-| PR17 | 各ルートへの `meta` 追加(SEO 本丸) | 未着手 |
+| PR17 | 各ルートへの `meta` 追加(SEO 本丸) | ✅ 完了 |
 | PR18 | typegen 導入 | 未着手 |
 | PR19 | 本番相当 Docker 検証環境の追加 | 未着手 |
 | PR20 | ドキュメント最終更新 | 未着手 |
@@ -241,6 +241,48 @@ SEO 対策の本丸。各ルートに `meta` を追加し、`<title>`/`<meta>` �
 - `frontend/app/routes-legacy/task-list-legacy.tsx` は意図的に `meta` を追加しない
   (Declarative Mode 比較用として「SEO 効果が得られない」ことを示す対比のまま残す旨を
   コメントで明記)
+
+**計画からの変更点(実装時に判明)**:
+- `frontend/app/root.tsx` の `<head>` に直書きしていた固定の `<title>rr8-rails-poc</title>`
+  を撤去し、代わりに root ルート自身の `meta: MetaFunction` として同じ内容を
+  export する形にした。React Router の `<Meta />` は「そのルートの `meta()` が
+  あればそれをそのまま使い、無ければ直近の祖先ルートの `meta()` の結果を
+  そのまま引き継ぐ(足し算はしない)」という仕組みになっており
+  (`node_modules/react-router/.../components.js` の `Meta` 実装で
+  `meta = [...routeMeta]` と毎回上書きしていることを確認)、
+  各ルートが個別に `meta()` を export しても `<title>` が2重に出力される
+  心配がないと分かった。この仕組みにより、`meta()` を export していない
+  `/tasks-legacy` は自動的に root の `meta()`(固定タイトル)にフォールバックする
+  ため、「タスク一覧の中身が変わっても `<title>` は変わらない」という対比が
+  追加コードなしで実現できている
+- `task-show.tsx` の `meta` は `MetaFunction<typeof loader>` とし、引数の
+  `loaderData` から `loader` の戻り値(`Task`)の型がそのまま推論されるようにした。
+  存在しないID(loader が例外を投げるケース)では `loaderData` が `undefined`に
+  なるため、その場合は固定文言にフォールバックするようにしている
+  (実機確認で `/tasks/999` にアクセスした際、500エラー自体は発生するものの
+  `meta()` 自体は例外を投げずに動作することを確認済み)
+- `<meta name="description">` も併せて各ルートに追加した(`<title>` だけでなく
+  `<meta>` タグも SEO 効果に関わるという当初の PR17 の記述に沿って対応)
+
+**実装環境に関する注記**: この実装セッションでも dockerd が使用できなかったため、
+`docker build` / `docker run` は実行していない。代わりにホスト上の Node.js で
+`npm run test` / `npm run build` / `npm run lint` / `npx tsc -b` がすべて成功する
+ことを確認した上で、`npm run dev` とダミーの `http://localhost:3999/api/v1/...`
+サーバー(タスク2件を返す)を使って以下を `curl` で確認した:
+- `/` → `<title>rr8-rails-poc</title>`(top-page の固定タイトル)
+- `/tasks` → `<title>タスク一覧 | rr8-rails-poc</title>`
+- `/tasks/1` → `<title>牛乳を買う | rr8-rails-poc</title>`
+  (ダミーデータの実際のタスク名がそのまま `<title>` に反映されている。
+  JS実行前の生HTMLの時点で確認できた = SSRでmetaが効いている証拠)
+- `/tasks/new` → `<title>タスク作成 | rr8-rails-poc</title>`
+- `/tasks-legacy` → `<title>rr8-rails-poc</title>`(root のフォールバックのまま。
+  タスクの中身に関わらず変化しない = Declarative Mode との対比ポイント)
+- `/tasks/999`(存在しないID)→ ステータスは500だが `<title>` は
+  `rr8-rails-poc`(root のフォールバック)のままで、meta() 自体が壊れないこと
+  も確認
+- `<meta name="description">` も `/` `/tasks` それぞれで意図した内容が
+  出力されていることを確認
+Docker環境での最終確認はレビュー側で実施する前提とする。
 
 **動作確認**:
 - `curl -s http://localhost:5173/tasks/1 | grep -o '<title>[^<]*</title>'` で

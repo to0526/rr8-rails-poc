@@ -24,9 +24,20 @@
 //   dist/assets/ 配下に出力される。いずれにせよファイル名や埋め込み方が変わっても
 //   参照側(import側)のコードは変更不要で追従できる。
 // - styles: top-page.module.css を import した CSS Modules。
-import { Link } from 'react-router'
+import { Link, type MetaFunction } from 'react-router'
 import logo from '../assets/react-router-logo.svg'
 import styles from './top-page.module.css'
+
+// meta: このルート("/")の <title>/<meta name="description"> を決める関数。
+//
+// Framework Mode ではこの関数の戻り値がサーバー側で HTML に埋め込まれるため、
+// curl 等 JS を実行しないクライアントでも正しい <title> が見える(= SEO対策の本丸)。
+// このページは loader を持たないため、戻り値は常に固定の内容になる
+// (loader データを使って動的に変える例は routes/task-show.tsx を参照)。
+export const meta: MetaFunction = () => [
+  { title: 'rr8-rails-poc' },
+  { name: 'description', content: 'React Router v8 (Framework Mode) + Rails API の検証用フロントエンドです。' },
+]
 
 function TopPage() {
   return (

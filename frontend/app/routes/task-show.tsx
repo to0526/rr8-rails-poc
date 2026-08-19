@@ -14,6 +14,7 @@ import {
   useLoaderData,
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
+  type MetaFunction,
 } from 'react-router'
 import { apiDelete, apiGet } from '../lib/api'
 import styles from './task-show.module.css'
@@ -45,6 +46,19 @@ export async function loader({ params }: LoaderFunctionArgs): Promise<Task> {
   const response = await apiGet<TaskResponse>(`/tasks/${params.id}`)
   return response.data
 }
+
+// meta: このルート("/tasks/:id")の <title> を決める関数。
+// 第1型引数に typeof loader を渡すことで、引数の loaderData が
+// loader の戻り値(Task)の型として推論される。
+// loaderData には loader が取得したタスクがそのまま渡ってくるため、
+// 「タスク名を含んだ <title>」をサーバー側で組み立てられる
+// (これが今回の SEO 対応の本丸: 一覧ページからは分からない個別ページの
+// 内容が、JS実行前の生HTMLの <title> の時点で検索エンジンに伝わる)。
+// loader が例外を投げた場合(存在しないIDなど)は loaderData が undefined に
+// なるため、その場合用のフォールバックの文言を用意している。
+export const meta: MetaFunction<typeof loader> = ({ loaderData }) => [
+  { title: loaderData ? `${loaderData.title} | rr8-rails-poc` : 'タスク詳細 | rr8-rails-poc' },
+]
 
 // action: この画面の削除フォームが送信されたときに呼ばれる関数。
 // 削除に成功したら redirect() で一覧画面(/tasks)に遷移する。
