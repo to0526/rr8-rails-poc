@@ -18,11 +18,24 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
+    // `react-router typegen`(`npm run dev`/`build` 実行時にも自動生成される)が
+    // app/routes/**/*.tsx それぞれに対応する型定義を
+    // .react-router/types/app/routes/+types/*.ts に生成する。各ルートファイルからは
+    // `import type { Route } from './+types/task-show'` のような相対パスで参照する
+    // 規約になっているが、実体は "app/routes/" ではなく ".react-router/types/app/routes/"
+    // に置かれている。rootDirs は「複数のディレクトリを1つの仮想フォルダとして
+    // 扱う」設定で、これを使うと app/ と .react-router/types/app/ を同じ階層とみなし、
+    // ルートファイルから見て "同じディレクトリにある +types/*.ts" として解決できる
+    // ようになる(実ファイルは移動しない。あくまで型チェック時の名前解決のためだけの設定)
+    "rootDirs": [".", "./.react-router/types"],
+
     /* Linting */
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["app"]
+  // ".react-router/types" … typegen が生成する型定義一式もコンパイル対象に含める
+  // (含めないと上記の rootDirs だけでは解決先のファイル自体が型チェック対象にならない)
+  "include": ["app", ".react-router/types"]
 }

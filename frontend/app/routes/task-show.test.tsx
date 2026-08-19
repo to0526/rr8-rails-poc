@@ -5,7 +5,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
-import { createRoutesStub } from 'react-router'
+import { createRoutesStub, type ActionFunction, type LoaderFunction } from 'react-router'
 import TaskShow, { action, loader } from './task-show'
 import { apiDelete, apiGet } from '../lib/api'
 
@@ -19,8 +19,15 @@ function renderTaskShow() {
     {
       path: '/tasks/:id',
       Component: TaskShow,
-      loader,
-      action,
+      // loader/action は typegen 由来の Route.LoaderArgs / Route.ActionArgs
+      // (このルートのパスから params.id が必ず存在する string と推論される)で
+      // 型付けされている。一方 createRoutesStub が受け取る RouteObject 側は
+      // どんなパスにも対応できる汎用の LoaderFunction / ActionFunction
+      // (params.id は存在しないかもしれない)を期待するため、より限定的な型を
+      // そのまま渡すとTS上は代入できない(実行時には "/tasks/:id" 固定なので
+      // 問題は起きない)。テストコードでの型合わせのためだけに as で変換する
+      loader: loader as LoaderFunction,
+      action: action as ActionFunction,
     },
     {
       // action成功時のredirect先。遷移できたことを確認するための目印を描画する。

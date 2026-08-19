@@ -51,7 +51,7 @@ PR13 以降は GitHub 上の1つの PR(**#20**, ブランチ `claude/framework-m
 | PR15 | Framework Mode 本体の切り替え(SSR化) | ✅ 完了 |
 | PR16 | API ベース URL のサーバー/クライアント分離 | ✅ 完了 |
 | PR17 | 各ルートへの `meta` 追加(SEO 本丸) | ✅ 完了 |
-| PR18 | typegen 導入 | 未着手 |
+| PR18 | typegen 導入 | ✅ 完了 |
 | PR19 | 本番相当 Docker 検証環境の追加 | 未着手 |
 | PR20 | ドキュメント最終更新 | 未着手 |
 
@@ -293,16 +293,65 @@ Docker環境での最終確認はレビュー側で実施する前提とする�
 
 ---
 
-## PR18: typegen 導入
+## PR18: typegen 導入 ✅完了
 `react-router typegen` による loader/params の型付け。
 
-- `frontend/package.json` — typegen 用スクリプト追加
-- `frontend/.gitignore` — 生成される `.react-router/` を無視
-- `frontend/tsconfig.json` — 生成型のパスを include
+- `frontend/package.json` — `typecheck` スクリプト(`react-router typegen && tsc -b`)を
+  追加。`npm run dev` / `npm run build` は元々 `@react-router/dev` の Vite プラグインが
+  内部で自動的に typegen を実行するため、typegen 単体のスクリプトは
+  「型だけ明示的にチェックしたい」用途向けとして追加した
+- `frontend/.gitignore` — 生成される `.react-router/` の無視は PR15 の時点で
+  先んじて対応済み(`react-router dev` を動かすだけで生成されてしまうため)だったので、
+  このPRでの変更は不要だった
+- `frontend/tsconfig.app.json` — `include` に `.react-router/types` を追加。あわせて
+  `rootDirs: [".", "./.react-router/types"]` を追加(各ルートファイルが
+  `import type { Route } from './+types/task-show'` のように相対パスで参照する規約に
+  なっているが、生成された型の実体は `app/routes/` ではなく
+  `.react-router/types/app/routes/` に置かれるため、rootDirs で両ディレクトリを
+  仮想的に1つとして扱わないと解決できないことが実装時の動作確認で判明した)
+- `frontend/app/routes/task-show.tsx` — `LoaderFunctionArgs` / `ActionFunctionArgs` /
+  `MetaFunction<typeof loader>` という汎用の型を、typegen が生成する
+  `Route.LoaderArgs` / `Route.ActionArgs` / `Route.MetaFunction`
+  (`./+types/task-show` から import)に置き換えた。このルートのパス
+  (`tasks/:id`)から `params.id` が「存在するかもしれない string」ではなく
+  「必ず存在する string」として自動的に型推論されるようになる点が、汎用の型との違い
+  (typegen 導入の効果を実際のコードで示す例として、動的パラメータを持つこのルートを選んだ)
 
-**動作確認**: `docker-compose run --rm frontend npm run build`(または typegen 用
-スクリプト)がエラーなく完了し、任意のルートファイルで `Route.LoaderArgs` 等の
-生成された型が使えること
+**計画からの変更点(実装時に判明)**:
+- `frontend/app/routes/task-show.test.tsx` で `createRoutesStub()` に `loader` /
+  `action` をそのまま渡すと型エラーになった。`createRoutesStub` はどんなパスにも
+  対応できる汎用の `LoaderFunction` / `ActionFunction`(`params.id` は存在しない
+  可能性がある)を期待する一方、typegen 由来の `Route.LoaderArgs` /
+  `Route.ActionArgs` は「`params.id` が必ず存在する」という、より限定的な
+  (でも実態としては正しい)型になっているため、汎用の型のスロットへ代入しようと
+  すると TypeScript の関数引数の反変チェックに引っかかる。実行時には
+  `"/tasks/:id"` 固定なので問題は起きないため、テストコード側でのみ
+  `as LoaderFunction` / `as ActionFunction` で型を合わせることにした
+  (typegen 導入と `createRoutesStub` を併用する際に一般的に発生する既知の
+  型の食い違いで、ルート側の型を緩めるのではなくテスト側で吸収する方針にした)
+
+**実装環境に関する注記**: このPRの実装セッションでは dockerd に加えてホスト上の
+Node.js の依存関係(`node_modules`)も未インストールの状態だったが、
+`npm install` はネットワーク経由で問題なく成功した(Rails 側で必要だった
+mysql2 のようなネイティブビルドを伴う依存が frontend には無いため)。
+`npm run typecheck`(`react-router typegen && tsc -b`)・`npm run test`・
+`npm run lint`・`npm run build` がいずれもエラーなく成功することを確認した。
+さらに `npm run dev` とダミーの `http://localhost:3999/api/v1/...` サーバーを
+使って `curl http://localhost:5199/tasks/1` を実行し、typegen 導入前の PR17 と
+同様に `<title>牛乳を買う | rr8-rails-poc</title>` がSSR済みHTMLに含まれる
+(型を変えただけで実行時の挙動が変わっていない)ことを確認した。
+Docker環境での最終確認はレビュー側で実施する前提とする。
+
+**動作確認**:
+- `docker-compose run --rm frontend npm run typecheck`(内部で typegen を実行後に
+  `tsc -b`)がエラーなく完了すること
+- `frontend/app/routes/task-show.tsx` で `Route.LoaderArgs` 等の生成された型が
+  使えていること(該当ファイルの import 文と `loader`/`action`/`meta` の型注釈を参照)
+- `docker-compose run --rm frontend npm run build` / `npm run test` が
+  従来通り成功すること
+- `docker-compose up` 後、`curl -s http://localhost:5173/tasks/1 | grep -o '<title>[^<]*</title>'`
+  で PR17 と同様にタスク名入りの `<title>` が返ること(typegen 導入で実行時の
+  挙動が変わっていないことの確認)
 
 ---
 
