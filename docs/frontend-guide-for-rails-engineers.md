@@ -79,6 +79,35 @@ sequenceDiagram
     RR->>View: useLoaderData()で画面に反映
 ```
 
+上の図の「router」の実体である `entry.server.tsx` / `entry.client.tsx` の
+ポイントとなるコードは以下の通りです。
+
+```tsx
+// frontend/app/entry.server.tsx(抜粋)
+// リクエストが来るたびに呼ばれるサーバー側のエントリポイント。
+// ServerRouter が request.url に対応するルートを実際にレンダリングし、
+// loader が返したデータ入りの HTML 文字列を生成する(= SSRの実体)。
+const { pipe, abort } = renderToPipeableStream(
+  <ServerRouter context={routerContext} url={request.url} />,
+  { /* ... onShellReady 等でストリームをレスポンスとして返す ... */ },
+)
+```
+
+```tsx
+// frontend/app/entry.client.tsx(抜粋)
+// ブラウザ側のエントリポイント。サーバーが送ってきた「すでにコンテンツが
+// 入った HTML」に対して、createRoot() で作り直すのではなく hydrateRoot() を
+// 使うことで、DOM をそのまま再利用しつつイベントハンドラを後付けする
+// (= ハイドレーション)。HydratedRouter が routes.ts の内容を読み込み、
+// 以降のブラウザ内遷移で loader / action を呼び分ける「router」になる。
+hydrateRoot(
+  document,
+  <StrictMode>
+    <HydratedRouter />
+  </StrictMode>,
+)
+```
+
 ## 2. ルーティング定義: `routes.ts`
 
 Rails の `config/routes.rb` に相当するファイルです。URLパスごとに
