@@ -52,7 +52,7 @@ PR13 以降は GitHub 上の1つの PR(**#20**, ブランチ `claude/framework-m
 | PR16 | API ベース URL のサーバー/クライアント分離 | ✅ 完了 |
 | PR17 | 各ルートへの `meta` 追加(SEO 本丸) | ✅ 完了 |
 | PR18 | typegen 導入 | ✅ 完了 |
-| PR19 | 本番相当 Docker 検証環境の追加 | 未着手 |
+| PR19 | 本番相当 Docker 検証環境の追加 | ✅ 完了 |
 | PR20 | ドキュメント最終更新 | 未着手 |
 
 ## PR13: 方針ドキュメント更新 ✅完了
@@ -368,10 +368,69 @@ Docker環境での最終確認はレビュー側で実施する前提とする�
   opt-in なサービス(例: `frontend-prod`、Compose profile で分離)を追加
 - `.env.example` — 本番相当ステージ専用の env var が必要であれば追記
 
+**計画からの変更点(実装時に判明)**:
+- `frontend/package.json` の `start` スクリプト(`react-router-serve ./build/server/index.js`)
+  は PR15 の時点で追加済みだったが、実際に呼び出す `@react-router/serve` パッケージ自体は
+  `dependencies` に入っていなかった(`react-router-serve` という実行コマンドが存在しない
+  状態だった)ことがこのPRの動作確認で判明した。`@react-router/serve` を
+  `react-router`/`@react-router/node` と同じ `^8.3.0` で `dependencies` に追加した
+- `frontend/Dockerfile` は `base`(依存インストール+ソースコピー)を共通ステージとし、
+  そこから `dev`(既存の `vite dev` 相当)と `prod`(`npm run build` 後
+  `npm run start` で配信)の2つに分岐するマルチステージ構成にした。`react-router-serve`
+  は `HOST`/`PORT` 環境変数を見てbind先を決める作りになっている
+  (`@react-router/serve` の CLI 実装で確認済み)ため、`prod` ステージで
+  `HOST=0.0.0.0`(コンテナ外からアクセス可能にするため)・`PORT=3000` を `ENV` で
+  固定した
+- `docker-compose.yml` の既存 `frontend` サービスは `build.target: dev` を明示した
+  (`Dockerfile` がマルチステージになり、target 未指定だと最後に定義したステージが
+  ビルドされてしまうため、既存の開発用挙動を変えないよう明示的に固定する必要があった)
+- `frontend-prod` サービスはホスト側ポートを `4000:3000` で公開した(`backend` が
+  既に host の `3000` を使っており、`frontend` の `5173` とも別にする必要があるため)。
+  `frontend` と異なりソースの volume マウントはせず、ビルド済みのイメージの中身を
+  そのまま動かす(本番相当ビルドを検証する目的のため)
+- **CORS の見落としを追加修正**: `frontend-prod` は `frontend`(`:5173`)とは別オリジン
+  (`http://localhost:4000`)になるため、ブラウザから直接 Rails API(`:3000`)を呼ぶ
+  操作(`useFetcher` でのチェックボックストグル、`/tasks/new` のフォーム送信等)が
+  既存の `backend/config/initializers/cors.rb`(`FRONTEND_ORIGIN` 単一オリジンのみ許可)
+  のままだと CORS エラーになることに気付いた(`curl` によるSSR確認だけなら
+  loader はサーバー側の Node プロセスから `API_BASE_URL_INTERNAL` 経由で直接
+  Rails を呼ぶため問題は表面化しないが、ブラウザ側からの操作では問題になる)。
+  `cors.rb` の `origins` 呼び出しを `ENV.fetch("FRONTEND_ORIGIN", ...).split(",").map(&:strip)`
+  に変更し、`FRONTEND_ORIGIN` をカンマ区切りで複数指定できるようにした上で、
+  `.env.example` のデフォルト値を `http://localhost:5173,http://localhost:4000` に更新した
+
+**実装環境に関する注記**: この実装セッションでも dockerd が使用できなかったため、
+`docker build` / `docker run` は実行していない。代わりにホスト上の Node.js で
+`npm run lint` / `npm run typecheck` / `npm run test` / `npm run build` がすべて
+成功することを確認した上で、ダミーの `http://localhost:3999/api/v1/...` サーバー
+(タスク2件を返す)を立て、ビルド成果物に対して直接
+`HOST=0.0.0.0 PORT=4321 API_BASE_URL_INTERNAL=http://localhost:3999/api/v1 npm run start`
+(`react-router-serve`)を実行し、`curl` で以下を確認した:
+- `/tasks` → `<title>タスク一覧 | rr8-rails-poc</title>` かつ本文に
+  `牛乳を買う`(ダミーデータのタスク名)がJS実行前の生HTMLに含まれる(本番ビルドの
+  SSRが効いている証拠)
+- `/tasks/1` → `<title>牛乳を買う | rr8-rails-poc</title>`
+- `/` → 200 が返る
+
+CORS の修正については、`rack-cors` gem 自体を(Rails 一式ではなく単体で)
+インストールし、`FRONTEND_ORIGIN=http://localhost:5173,http://localhost:4000` を
+`origins` に渡した状態で `Rack::MockRequest` を使い、`Origin: http://localhost:5173`
+と `Origin: http://localhost:4000` の両方で `access-control-allow-origin` が
+返り、未許可の `Origin: http://evil.example` では返らないことを確認した
+(Rails一式でのgem実行はこれまでのPRと同様、mysql2のネイティブビルドが
+ローカル環境で失敗するため未実施)。
+Docker環境での最終確認(`docker-compose --profile prod up frontend-prod` の
+実行含む)はレビュー側で実施する前提とする。
+
 **動作確認**:
-- `docker-compose --profile prod up frontend-prod`(または該当コマンド)で起動し、
-  `curl` で SSR 済み HTML(`<title>` 含む)が返ること
-- 通常の `docker-compose up`(profile 指定なし)の挙動が変わっていないこと
+- `docker-compose --profile prod up frontend-prod` で起動し、
+  `curl -s http://localhost:4000/tasks | grep -o '<title>[^<]*</title>'` で
+  SSR 済み HTML(実際のタスク名を含む `<title>`)が返ること
+- 通常の `docker-compose up`(profile 指定なし)で `frontend-prod` が起動せず、
+  従来通り `frontend`(`:5173`)のみが立ち上がること
+- `http://localhost:4000` を開き、`/tasks` のチェックボックストグルや
+  `/tasks/new` のフォーム送信がブラウザの CORS エラーなく動作すること
+  (CORS 修正の確認)
 
 ---
 
