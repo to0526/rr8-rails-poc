@@ -48,7 +48,7 @@ PR13 以降は GitHub 上の1つの PR(**#20**, ブランチ `claude/framework-m
 |---|---|---|
 | PR13 | 方針ドキュメント更新(CLAUDE.md / frontend-guide) | ✅ 完了(PR #20 にコミット済み) |
 | PR14 | `frontend/src/` → `frontend/app/` リネームのみ | ✅ 完了 |
-| PR15 | Framework Mode 本体の切り替え(SSR化) | 未着手 |
+| PR15 | Framework Mode 本体の切り替え(SSR化) | ✅ 完了 |
 | PR16 | API ベース URL のサーバー/クライアント分離 | 未着手 |
 | PR17 | 各ルートへの `meta` 追加(SEO 本丸) | 未着手 |
 | PR18 | typegen 導入 | 未着手 |
@@ -109,7 +109,8 @@ Framework Mode への本体の切り替え。既存ルートの挙動を変え�
 - `frontend/app/routes.ts`(新規)— ルート定義。`route()` 配列 API で、現状の
   `router.tsx` と同じ一覧(`/`, `/tasks`, `/tasks/new`, `/tasks/:id`, `/tasks-legacy`)を
   そのまま `app/routes/*`, `app/routes-legacy/*` の既存ファイルに紐付ける
-  (各ルートファイル自体は無変更)
+  (各ルートファイルのロジックは無変更。ただし loader/action の export名だけ
+  リネームが必要だった。詳細は下記「計画からの変更点」を参照)
 - `frontend/app/root.tsx`(新規)— `<html>`/`<Outlet>` を持つ最上位レイアウト
   (現状 `index.html` + `main.tsx` が暗黙に担っていた部分)
 - `frontend/app/entry.server.tsx`(新規)— `@react-router/node` を使ったサーバー
@@ -118,10 +119,38 @@ Framework Mode への本体の切り替え。既存ルートの挙動を変え�
   (`main.tsx` の `createRoot().render()` を置き換え)
 - 削除: `frontend/app/main.tsx`, `frontend/app/router.tsx`
   (`routes.ts` + `root.tsx` + `entry.*.tsx` に統合されるため)
-- `frontend/index.html` — Framework Mode ではシェルが `root.tsx` から生成されるため、
-  実装時に完全撤去か最小化かを確認しながら調整
-- `frontend/app/routes/*`, `frontend/app/routes-legacy/*`, `frontend/app/lib/api.ts` は
-  **このPRでは無変更**(挙動を変えずに土台だけ切り替えるのが目的)
+- `frontend/index.html` — Framework Mode ではシェルが `root.tsx` から生成されるため撤去
+  (`public/` 配下のファイルは index.html を経由せず Vite が引き続き配信するため、
+  favicon 等の参照は影響を受けない)
+
+**計画からの変更点(実装時に判明)**:
+- `frontend/app/routes/*` の `loader` / `action` の named export
+  (`taskListLoader` / `taskListAction` 等)は、**`loader` / `action` という固定名に
+  リネームした**(当初「このPRでは無変更」としていたが、Framework Mode の
+  `route()` はファイルが export する `loader` / `action` という名前の関数を規約として
+  自動的に拾う仕組みで、Data Mode時代のように router 定義側で任意の名前の関数を
+  `loader: taskListLoader` のように明示的に渡す方式ではないため、この名前に
+  合わせないと SSR 時に loader/action が一切呼ばれない(`useLoaderData()` が
+  `undefined` を返し、画面が壊れる)ことが実装時の動作確認で判明した)。
+  ロジック自体は一切変更していない。あわせて対応するテストファイルの import も追従
+- `frontend/.gitignore` — `react-router build` の出力先 `build/`(旧 `vite build` の
+  `dist/` に相当)と、`react-router dev`/`build` が自動生成する型キャッシュ
+  `.react-router/`(typegenを明示的に導入するPR18より前だが、ツール自体が既に
+  生成するため)を追加
+- `frontend/tsconfig.app.json` — `entry.server.tsx` が Node ビルトイン
+  (`node:stream`)を使うため `types` に `"node"` を追加。`frontend/tsconfig.node.json`
+  — 新規追加した `react-router.config.ts` / `vitest.config.ts` を `include` に追加
+
+**実装環境に関する注記**: この実装セッションでは dockerd が使用できなかったため、
+`docker build` / `docker run` は実行していない。代わりにホスト上の Node.js
+(v22, リポジトリの要求バージョンと一致)で直接
+`npm install` → `npx tsc -b` → `npm run test` → `npm run build` → `npm run lint` が
+すべて成功することを確認した。さらに `npm run dev` で開発サーバーを起動し、
+ダミーの `/api/v1/tasks`・`/api/v1/tasks/:id` を返す簡易HTTPサーバーを立てた状態で
+`curl` を実行し、`/`, `/tasks`, `/tasks/1`, `/tasks/new`, `/tasks-legacy` のいずれも
+200が返り、`/tasks` と `/tasks/1` のレスポンスHTMLに実際のタスク名がJS実行なしで
+含まれる(SSRが効いている)ことを確認済み。Docker環境での最終確認はレビュー側で
+実施する前提とする。
 
 **動作確認**:
 - `docker-compose up` で `frontend` が `:5173` で起動し、全ルートが従来と同じ見た目・
