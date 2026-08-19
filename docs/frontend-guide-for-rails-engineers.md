@@ -17,7 +17,7 @@
 frontend/
 ├── react-router.config.ts       # Framework Mode設定({ ssr: true }。全ルートSSR)
 ├── vite.config.ts               # Vite設定(@react-router/dev/vite の reactRouter())
-├── vitest.config.ts             # テスト実行専用のVite設定(後述14節)
+├── vitest.config.ts             # テスト実行専用のVite設定(後述12節)
 └── app/
     ├── root.tsx                  # 最上位レイアウト(config/application.rb + layout相当)
     ├── routes.ts                 # ルーティング定義(config/routes.rb 相当)
@@ -41,10 +41,10 @@ frontend/
 Rails でいうと、`routes.ts` が `config/routes.rb`、`routes/` 配下の
 各ファイルが「コントローラのアクション1つ+対応するビュー1つ」を1ファイルに
 まとめたもの、とイメージすると理解しやすいです。`root.tsx` は
-`application.html.erb` に近い、全ページ共通の土台(後述16節)。`entry.server.tsx` /
+`application.html.erb` に近い、全ページ共通の土台です。`entry.server.tsx` /
 `entry.client.tsx` はRails側に直接対応する概念がなく、「1リクエストごとにHTMLを
 組み立てるサーバー処理」と「そのHTMLにイベントハンドラを後付けするブラウザ処理」
-という、SSRを実現するための配線部分だと捉えてください(詳細は10-2節)。
+という、SSRを実現するための配線部分だと捉えてください(詳細は8-2節)。
 
 ### 全体の処理フロー(概念図)
 
@@ -59,7 +59,7 @@ Rails でいうと、`routes.ts` が `config/routes.rb`、`routes/` 配下の
 渡したりします。「React Router」というライブラリ名そのものと区別するため、
 図では `router` と表記しています。
 
-初回アクセス(SSR)については10-2節で別途詳しく説明するため、この図では
+初回アクセス(SSR)については8-2節で別途詳しく説明するため、この図では
 「ハイドレーション後のブラウザ内での動き」を表しています。
 
 ```mermaid
@@ -104,24 +104,7 @@ sequenceDiagram
 値が画面に反映される」ことが保証され、`useFetcher` の楽観的UIの
 ロールバックもこの仕組みの上に成り立っています(詳細は後述)。
 
-## 2. Rails の概念との対応表
-
-| Rails | React Router v8 (Framework Mode) | 備考 |
-|---|---|---|
-| `config/routes.rb` | `frontend/app/routes.ts` | パスとルートファイルの対応表 |
-| `resources :tasks` の `index` / `show` | `loader`(ルートファイルの `export` ) | 画面表示前に呼ばれ、取得結果を画面に渡す |
-| `resources :tasks` の `create` / `update` / `destroy` | `action`(ルートファイルの `export` ) | フォーム送信・`useFetcher`送信を受けて実行される |
-| `params[:id]` | `params.id`(loader/actionの引数) | 動的セグメント `:id` の値 |
-| ビュー(`.erb`) | ルートコンポーネント(`.tsx`) | 画面の見た目を組み立てる部分 |
-| ストロングパラメータ | `request.formData()` | フォーム送信されたデータの取り出し |
-| `render json: { errors: ... }, status: 422` | `useActionData()` で受け取るエラー | 後述 |
-| Turbo Frames / Stream的な部分更新 | `useFetcher()` | 画面遷移せずに一部だけ更新 |
-| `ApplicationController` の共通処理 | `lib/api.ts` | fetchの共通ラッパー |
-| `application.html.erb` | `app/root.tsx` | 全ページ共通の `<html>` の土台(16節) |
-| `<%= yield %>` | `<Outlet />` | 親レイアウトの中で子ルートが描画される位置(16節) |
-| `render layout: false` 等、レンダリング自体の制御 | `entry.server.tsx` / `entry.client.tsx` | Rails側に直接対応する概念はない。SSR/ハイドレーションの配線部分(10-2節) |
-
-## 3. ルーティング定義: `routes.ts`
+## 2. ルーティング定義: `routes.ts`
 
 Rails の `config/routes.rb` に相当するファイルです。URLパスごとに
 「どのファイル(コンポーネント)を描画するか」を1箇所に集約しています。
@@ -135,7 +118,7 @@ export default [
   route('tasks', 'routes/task-list.tsx'), // "/tasks" 相当。GET一覧 + PATCHでの完了切替
   route('tasks/new', 'routes/task-new.tsx'),   // "/tasks/new" 相当。POSTでの作成
   route('tasks/:id', 'routes/task-show.tsx'),  // "/tasks/:id" 相当。GET詳細 + DELETE
-  route('tasks-legacy', 'routes-legacy/task-list-legacy.tsx'), // 比較用(9節)
+  route('tasks-legacy', 'routes-legacy/task-list-legacy.tsx'), // 比較用: useEffect + fetch の素朴な実装
 ] satisfies RouteConfig
 ```
 
@@ -143,12 +126,12 @@ export default [
 紐付けたルートファイルが `export` している `loader` / `action` という
 固定名の関数をReact Routerが自動的に拾う**という規約になっている点です。
 そのため、任意の名前を付けることはできず、必ず `loader` / `action` という
-名前で `export` する必要があります(4節・5節のコード例を参照)。
+名前で `export` する必要があります(3節・4節のコード例を参照)。
 
 `resources :tasks` のように一括生成するのではなく、パスごとに明示的に
 `route()` を列挙する(ファイルベースルーティングを使わない)方針です。
 
-## 4. `loader`: 画面表示前のデータ取得(index / show 相当)
+## 3. `loader`: 画面表示前のデータ取得(index / show 相当)
 
 `loader` は「そのルートに遷移する直前に呼ばれ、戻り値が画面から
 `useLoaderData()` で参照できる」関数です。Railsで言えば、コントローラの
@@ -186,15 +169,14 @@ export async function loader({ params }: Route.LoaderArgs): Promise<Task> {
 `routes.ts` の定義から**ルートごとに**生成する型で、ルートファイルと同じ階層の
 `./+types/<ファイル名>` から import します。汎用の `LoaderFunctionArgs` と違い、
 このルートのパス(`tasks/:id`)から `params.id` が「存在するかもしれない
-string」ではなく「必ず存在する string」として自動的に推論される点が違います
-(18節も参照)。
+string」ではなく「必ず存在する string」として自動的に推論される点が違います。
 
 Rails のコントローラと違い、`loader` は **Reactコンポーネントの外にある
 ただの非同期関数**です。ルーティングの仕組み(React Router)を経由せずに
 直接呼び出して単体テストできる、という利点があります(後述のテストの項参照)。
 
 なお、Framework Mode では `loader` の実行場所(サーバー/ブラウザ)がURLへの
-アクセス方法によって変わります。詳細は10-2節で説明しますが、以下の図・
+アクセス方法によって変わります。詳細は8-2節で説明しますが、以下の図・
 コードは「ブラウザ内での画面遷移」を前提にしています。
 
 ### loaderの処理フロー(`/tasks/:id` に遷移した場合)
@@ -220,7 +202,7 @@ sequenceDiagram
 タスクが存在しない場合は `apiGet` が `ApiError` を投げ、`loader` 内でも
 catch していないため、React Router のデフォルトのエラー画面に委ねられます。
 
-## 5. `action`: フォーム送信の処理(create / update / destroy 相当)
+## 4. `action`: フォーム送信の処理(create / update / destroy 相当)
 
 `<Form method="post">` が送信されると、そのルートに紐付いた `action` が
 自動的に呼ばれます。Railsの `create` / `update` / `destroy` アクションに
@@ -250,7 +232,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
 `loader` と同様、`routes.ts` で紐付けたファイルが `export` している
 `action` という固定名の関数が自動的にこのルートの `action` として使われます
-(3節参照)。
+(2節参照)。
 
 画面側では `useActionData()` で `action` の戻り値を受け取り、フォームに
 エラーメッセージを表示します。
@@ -265,7 +247,7 @@ function TaskNew() {
 
 削除は `destroy` 相当で、成功後に一覧へリダイレクトします。`:id` を含む
 ルートなので、`loader` と同じく typegen 由来の `Route.ActionArgs` で
-型付けしています(4節参照)。
+型付けしています(3節参照)。
 
 ```tsx
 // frontend/app/routes/task-show.tsx
@@ -310,7 +292,7 @@ sequenceDiagram
 Rails の「保存に成功したら `redirect_to`、失敗したら `render :new`」という
 分岐と対応関係にあることが図からも分かります。
 
-## 6. `useFetcher()`: 画面遷移を伴わない部分更新(Turboの部分更新に近い)
+## 5. `useFetcher()`: 画面遷移を伴わない部分更新(Turboの部分更新に近い)
 
 一覧画面のチェックボックス(完了/未完了の切り替え)のように、「ページ全体は
 そのまま、裏側の一部データだけ更新したい」場合に使うのが `useFetcher()` です。
@@ -396,7 +378,7 @@ sequenceDiagram
 書かずに済んでいるのは、`action` 完了後に `loader` が必ず再実行される
 React Router の仕組みに乗っているためです。
 
-## 7. `lib/api.ts`: Rails API呼び出しの共通ラッパー
+## 6. `lib/api.ts`: Rails API呼び出しの共通ラッパー
 
 各コンポーネントで直接 `fetch()` を書かず、必ずこのファイルを経由します。
 `ApplicationController` に共通処理をまとめる感覚に近いです。
@@ -427,9 +409,9 @@ export async function apiGet<T>(path: string): Promise<T> {
 ```
 
 `loader` / `action` はサーバー(Node プロセス)・ブラウザのどちらでも実行され
-うるため(10-2節)、`resolveApiBaseUrl()` で実行場所ごとに参照する環境変数を
+うるため(8-2節)、`resolveApiBaseUrl()` で実行場所ごとに参照する環境変数を
 切り替えています。なぜ2つのベースURLが必要なのか、具体的な値やフォールバックの
-非対称性については **10-3節で詳しく説明**しています。
+非対称性については **8-3節で詳しく説明**しています。
 
 ポイントは **GET と POST/PATCH でエラーの扱い方を分けている**ことです。
 
@@ -441,102 +423,32 @@ export async function apiGet<T>(path: string): Promise<T> {
 - `apiDelete`: Rails が `204 No Content` を返す前提で、ボディを読まずに
   ステータスだけ返す(`response.json()` を呼ぶとパースエラーになるため)
 
-## 8. `react-router` からのみ import する
+## 7. Data Mode と Framework Mode の比較
 
-このリポジトリでは `react-router-dom` は使用禁止です(v8で廃止されたパッケージ)。
-すべて `react-router` から import します。
+React Router v8 には、SSRを行わない **Data Mode**(`createBrowserRouter` を
+使ったSPA)と、本PoCが採用している **Framework Mode**(SSR)の2つの
+使い方があります。本PoCは元々 Data Mode で構築されており、SEO対策のため
+Framework Mode へ移行しました(経緯は
+`docs/implementation-plan-framework-mode.md` 参照)。両者の違いをまとめると
+以下の通りです。
 
-```tsx
-import { Form, Link, redirect, useLoaderData, useFetcher } from 'react-router'
-```
+| 観点 | Data Mode | Framework Mode(本PoCで採用) |
+|---|---|---|
+| SSR(サーバーサイドレンダリング) | なし。初回HTMLは空の `<div id="root">` のみ | あり。初回HTMLに実際のコンテンツと `<title>`/`<meta>` が含まれる(SEO対策の本丸) |
+| 実行環境 | ビルド後は静的ファイル一式。Node.jsサーバー不要でNginx等で配信可 | 常時稼働するNode.jsプロセスが必須(`react-router-serve` 等でSSR実行) |
+| ルーティング定義ファイル | `router.tsx`(`createBrowserRouter([{ path, Component, loader, action }, ...])`) | `routes.ts`(`route()` / `index()` の配列。ファイルへのパスを列挙するだけ) |
+| loader/actionの紐付け方 | ルート定義側で `loader: taskListLoader` のように任意の名前の関数を明示的に渡す | ルートファイルが `export` している `loader` / `action` という固定名の関数をReact Routerが自動的に拾う(2節) |
+| loader/actionの実行場所 | 常にブラウザの中(Reactアプリの実行環境) | 初回アクセス時はサーバー(Node プロセス)側、画面遷移時はブラウザ側の両方で実行されうる(8-2節) |
+| Rails APIのベースURL | ブラウザから見えるURL(`VITE_API_BASE_URL`)の1つだけで済む | サーバー実行時とブラウザ実行時で異なるURLを参照する必要がある(8-3節) |
+| クライアントサイドルーティングのフォールバック | サブパス直接アクセス時に「配下のパスはすべて `index.html` を返す」キャッチオール設定が必要 | 不要。サーバー側のNode.jsプロセスがそのつど `routes.ts` の定義に基づいてHTMLを組み立てる(10-4節) |
+| ビルド成果物 | `index.html` + ハッシュ付きJS/CSSの静的ファイル一式 | `build/client/`(静的ファイル)と `build/server/`(SSR用Node.jsバンドル)の2種類(10-1節) |
+| デプロイ | 静的ホスティング(S3+CloudFront等)で配信可能 | 常時稼働するNode.jsプロセスの運用(スケーリング・監視等)が必要(10節) |
 
-## 9. 比較用の `routes-legacy/`: 素の `useEffect` + `fetch` との違い
+ポイントは、SSRを得た代わりに **「常時稼働するNode.jsプロセスの運用コスト」**
+と **「loader/actionの実行場所を意識した設計」** という2つの負担が新たに
+発生している、という点です。これらの詳細はそれぞれ8節・9節・10節で説明します。
 
-`loader` を使わない従来型の書き方(Declarative Mode)も比較用に1画面
-(`/tasks-legacy`)だけ残してあります。同じ一覧表示でも、`loader` 版が
-存在しないボイラープレートが必要になる点が分かります。
-
-```tsx
-// frontend/app/routes-legacy/task-list-legacy.tsx
-function TaskListLegacy() {
-  const [tasks, setTasks] = useState<Task[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    apiGet<TasksResponse>('/tasks')
-      .then((response) => { if (!cancelled) setTasks(response.data) })
-      .catch((err) => { if (!cancelled) setError(/* ... */) })
-    return () => { cancelled = true } // アンマウント後の状態更新を防ぐガード
-  }, [])
-  // ...
-}
-```
-
-`loader` 版(`task-list.tsx`)にはこの `useState` × 2、`useEffect`、
-キャンセル用フラグが一切登場しません。「取得済みのデータをどう表示するか」
-だけに専念できるのが `loader` の利点です。
-
-### loader版とLegacy版の流れの違い(ブラウザ内遷移の場合)
-
-同じ「一覧画面を表示してAPIを叩く」処理でも、データ取得のタイミングと
-状態管理の主体がどちらにあるかが異なります。以下は「ハイドレーション後、
-ブラウザ内でリンクをクリックして遷移した場合」の流れです。
-
-```mermaid
-sequenceDiagram
-    actor User as ユーザー
-    participant RR as router
-    participant Loader as "loader (task-list.tsx)"
-    participant Comp as TaskListコンポーネント
-    participant Rails as Rails API
-
-    alt loader版(/tasks)
-        User->>RR: "/tasks" へ遷移
-        RR->>Loader: loader() を呼ぶ
-        Loader->>Rails: GET /api/v1/tasks
-        Rails-->>Loader: JSONを返す
-        Loader-->>RR: tasksをreturn
-        RR->>Comp: 取得完了後にコンポーネントを描画
-        Comp->>Comp: useLoaderData()でtasksを受け取るだけ
-    else Legacy版(/tasks-legacy)
-        User->>RR: "/tasks-legacy" へ遷移
-        RR->>Comp: 先にコンポーネントを描画(tasksはnull)
-        Comp->>Comp: 「読み込み中...」を表示
-        Comp->>Rails: useEffect内でfetch実行(GET /api/v1/tasks)
-        Rails-->>Comp: JSONを返す
-        Comp->>Comp: setTasksで再描画をトリガー
-        Note over Comp: アンマウント済みなら更新をスキップ(cancelledフラグ)
-    end
-```
-
-loader版は「取得してから描画する」、Legacy版は「先に描画してから
-コンポーネント内で取得する」という順序の違いがあり、これがそのまま
-ローディング状態やキャンセル処理を自前で書く必要があるかどうかの差に
-つながっています。
-
-### 初回アクセス(SSR)時の違い: SEO効果の有無
-
-上記はブラウザ内遷移の話でしたが、**初回アクセス時(`curl` 等でJSを実行せずに
-アクセスした場合)の挙動にも両者で明確な差**があります。
-
-- `/tasks`(loader版): `loader` がサーバー側で実行され、その結果を使って
-  `<ul>` 等の一覧HTMLと `<title>タスク一覧 | rr8-rails-poc</title>` が
-  **JS実行前の生HTMLに直接含まれます**(10-2節・17節参照)。
-- `/tasks-legacy`(Legacy版): この画面は `loader` を持たないため、SSR自体は
-  行われるものの埋め込むデータがなく、サーバーが返すHTMLは「読み込み中...」の
-  空の状態のままです。実際のタスク一覧は、ブラウザでハイドレーションされた後の
-  `useEffect` 内でしか取得されません。またこの画面は意図的に `meta()` も
-  `export` していないため、`<title>` も一覧の中身に関わらず固定のままです
-  (root.tsxのフォールバック。詳細は10-3節・root.tsxのコメント参照)。
-
-つまり `/tasks-legacy` は「SSRされているが、SSRの恩恵(検索エンジンに実際の
-コンテンツが見える)を受けられていない」画面になっており、SSR対応が
-「サーバーでレンダリングされるかどうか」だけでなく「その時点で必要なデータを
-持っているかどうか」にも懸かっている、という点を対比的に示す役割を
-担っています。
-
-## 10. Next.js との比較、そして採用した Framework Mode(SSR)構成
+## 8. Next.js との比較、そして採用した Framework Mode(SSR)構成
 
 このリポジトリは、将来的な SEO 対策を見据えて React Router v8 の
 **Framework Mode(SSR)** を採用しています(採用の経緯・確定方針は
@@ -545,7 +457,7 @@ Next.js との対比で Framework Mode の位置付けを補足し、続けて `
 `action` の実行コンテキストの違いと、それに起因する `lib/api.ts` の設計を
 説明します。
 
-### 10-1. Next.js (App Router) との対比
+### 8-1. Next.js (App Router) との対比
 
 「フロントエンドのモダンな構成」というと Next.js(App Router)を思い浮かべる方も
 多いと思うので、React Router v8 の Framework Mode と Next.js の違いを対比で補足します。
@@ -565,7 +477,7 @@ Next.js との対比で Framework Mode の位置付けを補足し、続けて `
 (サーバー/ブラウザ)だけを両対応にする」方向の設計**である点です。`loader` /
 `action` は Server Component / Server Action のように直接データベースや業務
 ロジックにアクセスすることはなく、`lib/api.ts` を経由してRails APIにHTTP
-リクエストを送ります(3〜5節で説明した内容と同じです)。
+リクエストを送ります(2〜4節で説明した内容と同じです)。
 
 言い換えると、Next.jsの`loader`相当(Server Component)は「Railsのコントローラを
 JavaScript側に持ってくる」構成に近く、React Router v8の`loader`は「Railsの
@@ -576,7 +488,7 @@ SSR化のトレードオフとして、Node.js サーバーの運用コスト(�
 監視対象の増加)は発生しますが、初回 HTML にコンテンツと `<title>`/`<meta>` を
 含められる点がSEO上不可欠であるため、このトレードオフを受け入れる判断をしています。
 
-### 10-2. `loader` / `action` の実行コンテキスト: サーバーとブラウザの2箇所
+### 8-2. `loader` / `action` の実行コンテキスト: サーバーとブラウザの2箇所
 
 Framework Mode では、`loader` / `action` が**サーバー(Node プロセス)・
 ブラウザのどちらでも実行されうる**点が、最も注意が必要なポイントです。
@@ -596,7 +508,7 @@ Framework Mode では、`loader` / `action` が**サーバー(Node プロセス)
 Dockerネットワーク内のホスト名として解決できますが、ブラウザ側は `backend` という
 ホスト名をそもそも解決できません)。
 
-### 10-3. `lib/api.ts` がなぜ2つのベースURLを持つか
+### 8-3. `lib/api.ts` がなぜ2つのベースURLを持つか
 
 上記の理由により、`lib/api.ts` はRails APIのベースURLを実行コンテキストに応じて
 切り替える設計になっています(`resolveApiBaseUrl()` 関数。実装コメントも参照)。
@@ -622,14 +534,14 @@ Dockerネットワーク内のホスト名として解決できますが、ブ�
 
 ベースURLの解決はモジュール読み込み時に1回だけ行うのではなく、`apiGet` 等の呼び出し
 時に毎回評価しています。`lib/api.ts` は `loader` / `action` だけでなく
-`routes-legacy/task-list-legacy.tsx`(素の `useEffect` + fetch。10-2で説明した通り
+`routes-legacy/task-list-legacy.tsx`(素の `useEffect` + fetch。8-2節で説明した通り
 SSR自体はされるが、API呼び出しはブラウザの `useEffect` でのみ発生する)からも
 importされるため、モジュール読み込み時点で `API_BASE_URL_INTERNAL` 未設定を
 例外にしてしまうと、本来Rails APIを呼ばない `/` や `/tasks-legacy` のSSRまで
 巻き込んで失敗させてしまいます。呼び出し時まで評価を遅延させることで、この
 巻き込みを避けています。
 
-## 11. ログイン処理について(オプション要件・将来の検討事項)
+## 9. ログイン処理について(オプション要件・将来の検討事項)
 
 本PoCは CLAUDE.md に明記の通り「認証は一旦なし」がスコープであり、ここまでの内容は
 すべて未ログイン前提です。ただし将来的な採用検討の材料として、**具体的なシナリオを
@@ -639,7 +551,7 @@ importされるため、モジュール読み込み時点で `API_BASE_URL_INTER
 ログイン機能を既に持つ)に対し、`exampl.com/new_page` という1画面だけを
 React Router v8(Framework Mode)で新規に作る場合。
 
-### 11-1. 前提: 同一オリジンでの配信を推奨する
+### 9-1. 前提: 同一オリジンでの配信を推奨する
 
 `exampl.com/new_page` は**サブドメインではなくパス**である点がポイントです。
 `app.exampl.com` のような別オリジンに切り出すのではなく、リバースプロキシ
@@ -651,14 +563,14 @@ React Router側に振り分ける、あるいはRails自身がビルド成果物
 |---|---|---|
 | Cookie送信 | ブラウザが自動送信(特別な設定不要) | `SameSite=None; Secure` + `credentials: 'include'` が必要 |
 | CORS設定 | 不要(そもそもクロスオリジンにならない) | `rack-cors` 側で許可オリジン・`credentials: true` の設定が必要 |
-| CSRF | 必要(11-4節参照) | 必要(さらにcrossOriginな分、設計の難易度が上がる) |
+| CSRF | 必要(9-4節参照) | 必要(さらにcrossOriginな分、設計の難易度が上がる) |
 
 本PoCの開発環境(frontend: `localhost:5173` / backend: `localhost:3000`)は
 別オリジン構成の一例ですが、認証を実装していないためこの問題が表面化していません。
 本番相当の構成を検討する際は、上表の「同一オリジン配信」を前提にするのが
 シンプルだと考えられます。
 
-### 11-2. ログイン状態の共有: セッションCookieがそのまま使える(ブラウザ実行時)
+### 9-2. ログイン状態の共有: セッションCookieがそのまま使える(ブラウザ実行時)
 
 同一オリジン配信であれば、`exampl.com` の既存ログイン(Devise等によるセッション
 Cookie発行)がそのまま利用できます。ブラウザの `fetch()` は**同一オリジンへの
@@ -673,7 +585,7 @@ APIリクエストにログイン中のセッションCookieが自動的に付�
 管理したりOAuthフローを組んだりする必要がない、という意味でこの構成の大きな利点です。
 
 **ただしこれはあくまで `loader` / `action` が「ブラウザ側」で実行される場合
-(ハイドレーション後の画面遷移。10-2節参照)の話です。** `loader` は初回
+(ハイドレーション後の画面遷移。8-2節参照)の話です。** `loader` は初回
 アクセス時に**サーバー(Node プロセス)側**でも実行されます。この場合に
 APIへ送られるのはブラウザの `fetch` ではなく
 Node プロセスの `fetch` によるリクエストであり、ブラウザが自動的にCookieを
@@ -697,11 +609,11 @@ export async function loader({ request }: Route.LoaderArgs) {
 (`apiGet` が追加のヘッダを受け取れるようにする、といった `lib/api.ts` 側の
 拡張も別途必要になります。あくまで設計の方向性を示すイメージです)
 
-### 11-3. 未ログイン時のハンドリング(loaderでの認可チェック)
+### 9-3. 未ログイン時のハンドリング(loaderでの認可チェック)
 
 `loader` の冒頭で現在のユーザー情報を返すAPI(例: `GET /api/v1/me`)を呼び、
 401が返ってきたら未ログインと判断してRailsの既存ログイン画面へ遷移させる、
-という設計が考えられます(上記11-2の通り、サーバー実行時はCookie転送も
+という設計が考えられます(上記9-2の通り、サーバー実行時はCookie転送も
 あわせて必要です)。
 
 ```tsx
@@ -716,7 +628,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     // 素のブラウザ遷移(フルページリロード)を起こす必要がある。
     // ※ window.location.href はブラウザにしか存在しないグローバル変数のため、
     //   この loader がサーバー側(Node プロセス)で実行された場合は使えない
-    //   (10-2節参照)。サーバー・ブラウザどちらの実行でも動くようにするには、
+    //   (8-2節参照)。サーバー・ブラウザどちらの実行でも動くようにするには、
     //   React Router の redirect() が返す Response をそのまま return する
     //   (React Router自身が「ルーター外への遷移」もHTTPリダイレクトとして
     //   ブラウザに伝播させてくれる)のが実装時の妥当な選択肢になりそうです。
@@ -733,7 +645,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 相当の `Response` を返すだけなので、実行場所を問わず動く設計にするなら
 こちらを使う方が筋が良いです。
 
-### 11-4. CSRFトークンの扱い
+### 9-4. CSRFトークンの扱い
 
 セッションCookieによる認証は、ブラウザがCookieを自動送信してしまう性質上、
 状態変更系のリクエスト(`action` からのPOST/PATCH/DELETE)がCSRF(クロスサイト
@@ -747,10 +659,10 @@ CSRF保護(`protect_from_forgery`)を含まないため、Cookieセッション�
 方式が一般的です。ただし具体的な実装方式(どのエンドポイントでトークンを配布するか等)は
 本ドキュメントの時点では未検討で、実装時に別途設計が必要な項目として残しておきます。
 
-### 11-5. 処理フロー図
+### 9-5. 処理フロー図
 
 初回アクセス(サーバー側で `loader` が実行される)の場合、ブラウザが送った
-Cookieを `loader` が明示的にRails APIへ転送する(11-2節)必要があります。
+Cookieを `loader` が明示的にRails APIへ転送する(9-2節)必要があります。
 
 ```mermaid
 sequenceDiagram
@@ -778,35 +690,35 @@ sequenceDiagram
     end
 ```
 
-### 11-6. Railsの概念との対応表
+### 9-6. Railsの概念との対応表
 
 | Rails | React Router側での扱い |
 |---|---|
 | `before_action :authenticate_user!` | `loader` 冒頭で `/api/v1/me` を呼び、401なら未ログイン扱いにする |
 | `current_user` | 認証チェック用APIのレスポンスとして取得し、必要なら画面に渡す |
-| `protect_from_forgery` | `lib/api.ts` でCSRFトークンをヘッダに付与する(要設計、11-4節参照) |
+| `protect_from_forgery` | `lib/api.ts` でCSRFトークンをヘッダに付与する(要設計、9-4節参照) |
 | Deviseのログイン画面(`/login`) | React Routerの管理外。HTTPリダイレクト( `redirect()` )でフルページ遷移させる |
 | セッションCookie(ブラウザ実行時) | 同一オリジン配信であれば`fetch`のデフォルト挙動で自動送信される |
-| セッションCookie(サーバー実行時) | 自動送信されない。`request.headers.get('cookie')` で明示的に転送する必要がある(11-2節) |
+| セッションCookie(サーバー実行時) | 自動送信されない。`request.headers.get('cookie')` で明示的に転送する必要がある(9-2節) |
 
 以上はあくまで設計上の検討メモであり、本PoCでは検証していません。
 [poc-summary.md](./poc-summary.md) の懸念点にも記載の通り、実際に採用する際は
 このドキュメントの内容をもとに、認証を絡めた `loader` / `action` の挙動を
 改めて別PRで検証する必要があります。
 
-## 12. デプロイについて(オプション要件・将来の検討事項)
+## 10. デプロイについて(オプション要件・将来の検討事項)
 
-11節(ログイン処理)では「同一オリジンでの配信を推奨する」と述べましたが、
+9節(ログイン処理)では「同一オリジンでの配信を推奨する」と述べましたが、
 これを実現するには実際にどうビルド成果物を配置すればよいのでしょうか。
 本PoCでは**本番デプロイ設定(ECS Fargate等)自体は未実装・スコープ外**
 (CLAUDE.md参照)ですが、ローカルでの本番相当ビルド検証(PR19)は実施しており、
 それを踏まえて将来検討する際の指針として整理しておきます。
 
 Framework Mode(SSR)では**リクエストのたびにサーバー側でHTMLを組み立てる
-必要がある**ため、**常時稼働するNode.jsプロセスが必須**です。10節で触れた
+必要がある**ため、**常時稼働するNode.jsプロセスが必須**です。8節で触れた
 「SSR化のトレードオフ」が、デプロイの観点で最も具体的に現れるのがこの節です。
 
-### 12-1. ビルド成果物: クライアント用とサーバー用の2種類
+### 10-1. ビルド成果物: クライアント用とサーバー用の2種類
 
 `npm run build`(内部的には `react-router build`)を実行すると、
 `frontend/build/` 配下に2つの成果物が出力されます。
@@ -828,7 +740,7 @@ Railsで言えば `rails assets:precompile` が `public/assets/` 配下に
 (`build/server/` を動かすNode.jsプロセス)が新たに必要になった**、という
 違いが本質的です。
 
-### 12-2. ローカルでの本番相当ビルド検証(PR19で実施)
+### 10-2. ローカルでの本番相当ビルド検証(PR19で実施)
 
 本PoCの `frontend/Dockerfile` は、開発用の `dev` ステージ(`vite dev` によるSSR。
 ホットリロードあり)と、本番相当ビルドを検証する `prod` ステージ
@@ -851,9 +763,9 @@ opt-inな `frontend-prod` サービス(Compose profile `prod`)として追加し
 確認するための検証環境**であり、実際の本番デプロイ設定(ECS Fargate等への
 反映)ではない点に注意してください。
 
-### 12-3. 配置パターン: リバースプロキシ配下にNodeプロセスを置く
+### 10-3. 配置パターン: リバースプロキシ配下にNodeプロセスを置く
 
-11節の「同一オリジン配信」を実現する方法としては、主に2パターンが
+9節の「同一オリジン配信」を実現する方法としては、主に2パターンが
 考えられます。いずれも `exampl.com` という同一オリジンを維持できます。
 SSRのために常時稼働するNode.jsプロセスが必要なため、静的ファイルのみの
 ホスティング(S3+CloudFrontのような構成)は選べません(`loader` を
@@ -868,7 +780,7 @@ SSRのために常時稼働するNode.jsプロセスが必要なため、静的�
 (ヘルスチェック、再起動、水平スケーリング等)という運用上の検討事項が
 発生します。
 
-### 12-4. クライアントサイドルーティングの扱い
+### 10-4. クライアントサイドルーティングの扱い
 
 `react-router-serve`(≒サーバー側のNode.jsプロセス)自体が `routes.ts` の
 定義を理解しており、`/new_page/xxx` のようなサブパスへの直接アクセスや
@@ -877,7 +789,7 @@ SSRのために常時稼働するNode.jsプロセスが必要なため、静的�
 `index.html` を返し、実際の画面切り替えはクライアント側のJavaScriptが行う」
 というキャッチオール設定は不要です。
 
-### 12-5. キャッシュ戦略
+### 10-5. キャッシュ戦略
 
 - `build/client/assets/` 配下のハッシュ付きJS/CSSは、ファイル内容が変われば
   ファイル名も変わるため、長期キャッシュ
@@ -891,7 +803,7 @@ SSRのために常時稼働するNode.jsプロセスが必要なため、静的�
   (`stale-while-revalidate` 等)を検討する余地はありますが、本PoCでは
   未検証です。
 
-### 12-6. ビルド〜配信の流れ
+### 10-6. ビルド〜配信の流れ
 
 ```mermaid
 sequenceDiagram
@@ -908,10 +820,10 @@ sequenceDiagram
     Server->>Server: entry.server.tsx がリクエストごとにloaderを実行しHTMLを組み立てる(SSR)
     Server-->>User: コンテンツ入りのHTMLを返す
     User->>Server: ハイドレーション用のJS(build/client/)を取得
-    Note over User: ブラウザ上でハイドレーション完了後は、以降11節のログインチェック等がブラウザ側でも動く
+    Note over User: ブラウザ上でハイドレーション完了後は、以降9節のログインチェック等がブラウザ側でも動く
 ```
 
-### 12-7. Railsの概念との対応表
+### 10-7. Railsの概念との対応表
 
 | Rails | フロントエンドのデプロイ(Framework Mode) |
 |---|---|
@@ -922,10 +834,10 @@ sequenceDiagram
 
 以上はあくまで設計上の検討メモであり、実際の本番デプロイ設定(ECS Fargate等への
 反映、CI/CDへの組み込み)自体は本PoCのスコープ外です。実際に採用する際は、
-12-2節のローカル検証を踏まえつつ、Node.jsプロセスの運用(スケーリング・
+10-2節のローカル検証を踏まえつつ、Node.jsプロセスの運用(スケーリング・
 デプロイ・監視)を別途設計・検証する必要があります。
 
-## 13. CSS・画像の扱い
+## 11. CSS・画像の扱い
 
 - スタイルはルート単位で CSS Modules(`task-list.module.css` など)を使用。
   クラス名の衝突を気にせず書けます。
@@ -940,7 +852,7 @@ sequenceDiagram
   - 実運用では基本的に `app/assets/` + import 方式を標準にするのが良さそう、
     というのが検証時の所感です(詳細は [poc-summary.md](./poc-summary.md) 参照)。
 
-## 14. テスト: Vitest + Testing Library
+## 12. テスト: Vitest + Testing Library
 
 `loader` / `action` はプレーンな非同期関数として `export` しているため、
 React Router のルーティング機構を経由せずに単体テストできます
@@ -959,7 +871,7 @@ docker compose exec frontend npm run test
 存在する場合こちらを優先して読み込むという仕組みで住み分けています
 (`test.environment: 'jsdom'` / `setupFiles` を指定)。
 
-また、typegen(18節)導入後は `loader` / `action` の型が
+また、typegen導入後は `loader` / `action` の型が
 `Route.LoaderArgs` / `Route.ActionArgs` という「このルートのパスに特化した
 より限定的な型」になったため、`createRoutesStub()`(テスト用にルートツリーを
 差し替えるReact Routerのユーティリティ)へそのまま渡そうとすると型エラーに
@@ -968,125 +880,7 @@ docker compose exec frontend npm run test
 `as LoaderFunction` / `as ActionFunction` として型を合わせています
 (実行時にはパスが固定なので問題は起きません。`task-show.test.tsx` 参照)。
 
-## 15. エラーバウンダリ: 想定外エラーの扱い(`rescue_from`相当)
-
-ここまでの `loader` / `action` は、Rails APIが422を返すケースなど想定内のエラーは
-`status` を見て個別にハンドリングしてきましたが(5節参照)、それ以外の想定外の
-エラー(404、500、通信エラーなど)は特に何もキャッチしておらず、React Router
-標準のデフォルトエラー画面に任せる形になっています(4節の「タスクが存在しない
-場合は `apiGet` が `ApiError` を投げ…React Routerのデフォルトのエラー画面に
-委ねられます」という記述の通りです)。
-
-このデフォルト画面を、ルートごとに独自のエラー画面に差し替える仕組みが
-**エラーバウンダリ**(`ErrorBoundary`)です。Railsで言えば、`ApplicationController`
-の `rescue_from` でコントローラ単位・例外クラス単位にエラーレスポンスを
-カスタマイズする仕組みに近いイメージです。
-
-```tsx
-// frontend/app/routes/task-show.tsx (追加イメージ。現状のPoCでは未使用)
-import { isRouteErrorResponse, useRouteError } from 'react-router'
-
-// loader/action内で投げられた例外や、コンポーネントのレンダリング中に
-//発生したエラーを、このコンポーネントがキャッチして表示する。
-//
-// loader/action/metaと同様に「ErrorBoundary」という固定名でexportしておく
-// だけで、routes.tsでこのファイルに紐付けたルート用のエラー画面として
-// 自動的に使われる(3節で説明したloader/actionの規約と同じ考え方)。
-export function ErrorBoundary() {
-  const error = useRouteError()
-
-  // レスポンス由来のエラー(ステータスコード付き)かどうかを判定できる
-  if (isRouteErrorResponse(error) && error.status === 404) {
-    return <p>タスクが見つかりませんでした</p>
-  }
-
-  return <p>予期しないエラーが発生しました</p>
-}
-```
-
-ポイントは、`ErrorBoundary` を `export` していないルートで発生したエラーは、
-**1つ上の階層のルートの `ErrorBoundary`(なければさらに上……最終的には
-`root.tsx`)にバブリングしていく**ことです。Railsの `rescue_from` が
-`ApplicationController` に書けば全コントローラに継承され、個別のコントローラで
-上書きもできるのと似た構造だとイメージすると理解しやすいです(16節で説明する
-ネスト構造とも関係します)。
-
-| Rails | React Router v8 (Framework Mode) |
-|---|---|
-| `rescue_from StandardError`(`ApplicationController`) | `root.tsx` の `ErrorBoundary`(なければReact Router標準のデフォルトエラー画面) |
-| コントローラ単位の `rescue_from` 上書き | 特定のルートファイルに `ErrorBoundary` を個別 `export` |
-| `render status: 404` | `useRouteError()` + `isRouteErrorResponse()` でステータスに応じて表示を出し分け |
-
-本PoCでは `ErrorBoundary` を明示的に設定しておらず、すべてReact Router標準の
-デフォルトエラー画面に委ねています。実運用では、少なくとも404(存在しないID)・
-500(サーバーエラー)・通信エラーの3パターン程度は画面ごとに用意しておくのが
-良さそうです。
-
-## 16. `Outlet`: 共通レイアウトのネスト構造
-
-すでに1節・2節で少し触れた通り、`root.tsx` の `<Outlet />` の位置に
-「現在のURLに対応するルートのコンポーネント」が描画される、という
-入れ子構造がFramework Mode全体の土台になっています。今のルート定義
-(`routes.ts`)では `/tasks` ・ `/tasks/new` ・ `/tasks/:id` がいずれも
-`root.tsx` 直下の子として並んでいるだけですが、これらの画面グループにだけ
-共通のヘッダーやフッターを持たせたい場合は、**さらに一段ネストしたレイアウト
-ルート**を追加できます。
-
-Railsで言えば、`application.html.erb` の `<%= yield %>` の位置に各アクションの
-ビューが差し込まれる仕組みに近いです。`Outlet` が `yield` の役割を果たし、
-子ルートに対応するコンポーネントがそこに描画されます。
-
-```tsx
-// frontend/app/routes/layout.tsx (追加イメージ。現状のPoCでは未使用)
-import { Outlet } from 'react-router'
-
-export default function Layout() {
-  return (
-    <>
-      <Header /> {/* 全画面共通のヘッダー */}
-      <Outlet />  {/* 現在のURLに対応する子ルートのコンポーネントがここに描画される */}
-      <Footer /> {/* 全画面共通のフッター */}
-    </>
-  )
-}
-```
-
-```ts
-// frontend/app/routes.ts (ネスト構造にする場合のイメージ)
-import { type RouteConfig, index, layout, route } from '@react-router/dev/routes'
-
-export default [
-  index('routes/top-page.tsx'),
-  // layout()は「URLパスを消費しない」レイアウト専用のネスト
-  // (Railsのnamespace/moduleがURLセグメントを追加するのとは異なり、
-  // あくまで見た目の入れ子だけを作る点に注意)。
-  // 第2引数の配列内のルートは、すべてLayoutコンポーネントの<Outlet/>に描画される。
-  layout('routes/layout.tsx', [
-    route('tasks', 'routes/task-list.tsx'),
-    route('tasks/new', 'routes/task-new.tsx'),
-    route('tasks/:id', 'routes/task-show.tsx'),
-  ]),
-  route('tasks-legacy', 'routes-legacy/task-list-legacy.tsx'),
-] satisfies RouteConfig
-```
-
-| Rails | React Router v8 (Framework Mode) |
-|---|---|
-| `application.html.erb` の `<%= yield %>` | 親ルートの `<Outlet />`(`root.tsx` 自体も1段目のレイアウト) |
-| `_header.erb` / `_footer.erb` などのパーシャル | `Layout` コンポーネント内の共通UI |
-| ネストした `resources`(`resources :tasks do ... end`) | `routes.ts` の `layout()` / `route()` の第3引数(children)によるネスト定義 |
-
-15節の `ErrorBoundary` もこのネスト構造に沿ってバブリングするため、たとえば
-`Layout` に共通の `ErrorBoundary` を1つ置きつつ、`/tasks/:id` だけ個別の
-`ErrorBoundary` で上書きする、という組み合わせ方もできます。
-
-11節で触れた「`exampl.com/new_page` に既存サービスと統一感のあるヘッダー/フッターを
-持たせたい」というケースでは、この `Layout` コンポーネント側にexampl.com既存の
-デザインに合わせたヘッダー/フッターを実装する形になります(Rails側がレンダリング
-する既存ページのヘッダー/フッターとどう見た目を揃えるかは、デザインシステムの
-共有方法も含めて別途の検討が必要です)。
-
-## 17. まとめ
+## 13. まとめ
 
 - ルーティング・データ取得・フォーム処理の宣言場所が `routes.ts` に
   集約されるため、「この画面が何をしているか」を追いやすい
@@ -1096,9 +890,9 @@ export default [
   相性の良い仕組みが標準で用意されている
 - Framework Mode(SSR)により、初回HTMLに実際のコンテンツと `<title>`/`<meta>`
   が含まれSEO対策が可能になる一方、`loader` / `action` の実行場所
-  (サーバー/ブラウザ)を意識した設計(`lib/api.ts` のベースURL分岐、11節の
-  Cookie転送など)や、常時稼働するNode.jsプロセスの運用(12節)が必要になる、
-  というのがこの構成のトレードオフ
+  (サーバー/ブラウザ)を意識した設計(`lib/api.ts` のベースURL分岐、9節の
+  Cookie転送など)や、常時稼働するNode.jsプロセスの運用(10節)が必要になる、
+  というのがこの構成のトレードオフ(7節も参照)
 
 採用可否の詳しい所感・懸念点は [docs/poc-summary.md](./poc-summary.md) を
 参照してください。
