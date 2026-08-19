@@ -460,46 +460,103 @@ Data Mode版は「取得してから描画する」、Legacy版は「先に描�
 ローディング状態やキャンセル処理を自前で書く必要があるかどうかの差に
 つながっています。
 
-## 10. Next.js との比較: Framework Mode(App Router)との違い
+## 10. Next.js との比較、そして採用した Framework Mode(SSR)構成
 
-> **Note:** このリポジトリは現在 Data Mode から Framework Mode(SSR)への移行を
-> 進めています(将来的な SEO 対策のため)。以下は移行前(Data Mode のみ)を前提に
-> 書かれた内容で、「Framework Mode は不採用」という結論部分は現状と異なります。
-> 移行が完了し次第、この節全体を書き直します。当面は Next.js との対比としての
-> 参考情報として読んでください。
+このリポジトリは当初 React Router v8 の Data Mode(SPA、SSRなし)のみを採用する
+方針でしたが、将来的な SEO 対策を見据えて **Framework Mode(SSR)へ移行**しました
+(移行の経緯・確定方針は `docs/implementation-plan-framework-mode.md` を参照)。
+以前このセクションには「SSR は不要」という結論を書いていましたが、それは撤回します。
+以下では、まず Next.js との対比で Framework Mode の位置付けを補足し、続けて
+`loader` / `action` の実行コンテキストの違いと、それに起因する `lib/api.ts` の設計を
+説明します。
+
+### 10-1. Next.js (App Router) との対比
 
 「フロントエンドのモダンな構成」というと Next.js(App Router)を思い浮かべる方も
-多いと思うので、React Router v8 の Data Mode と Next.js の違いを対比で補足します。
+多いと思うので、React Router v8 の Framework Mode と Next.js の違いを対比で補足します。
 
-| 観点 | Next.js (App Router) | React Router v8 (Data Mode) |
+| 観点 | Next.js (App Router) | React Router v8 (Framework Mode) |
 |---|---|---|
-| 実行環境 | Node.js サーバーが必須(Vercel or 自前サーバーでSSR実行) | ビルド後は静的ファイル一式。Node.jsサーバー不要でNginx等で配信可 |
-| ルーティング定義方法 | `app/` 配下のディレクトリ構造がそのままルーティングになる(ファイルベース) | `router.tsx` に配列でパスを明示的に列挙(集中管理) |
-| データ取得 | Server Component 内で直接 DB/ORM を呼べる(`await db.query()` 等) | `loader` は必ず `fetch` 経由でRails APIを呼ぶ(HTTP境界を越える) |
+| 実行環境 | Node.js サーバーが必須(Vercel or 自前サーバーでSSR実行) | 同じく Node.js サーバーが必須(`react-router-serve` 等でSSR実行。Data Mode時代の「静的ファイルのみで配信可」ではなくなった) |
+| ルーティング定義方法 | `app/` 配下のディレクトリ構造がそのままルーティングになる(ファイルベース) | `routes.ts` に `route()` / `index()` で配列として明示的に列挙(集中管理。ファイルベースルーティングは使わない方針は変更なし) |
+| データ取得 | Server Component 内で直接 DB/ORM を呼べる(`await db.query()` 等) | `loader` は必ず `fetch`(`lib/api.ts` 経由)でRails APIを呼ぶ(HTTP境界を越える) |
 | 更新処理 | Server Actions(`"use server"`)がクライアントから直接呼べるRPC関数になる。フロントとバックエンドの境界が曖昧になる | `action` は `fetch` でRails APIにリクエストを送るだけ。処理の実体は常にRails側 |
-| フロント/バックエンドの分離 | Server Component / Server Action がバックエンド処理を兼ねるため、Railsのような「別プロセスのAPI」という区分けが薄れる | フロントは常にSPA、バックエンドは常にRails API、という役割分担が明確 |
-| このリポジトリでの位置付け | 不採用(Next.jsへの全面移行は検討していない) | 採用(移行中)。既存のRails(API)+フロントは、SEO対策のためFramework Mode(SSR)へ移行中 |
+| フロント/バックエンドの分離 | Server Component / Server Action がバックエンド処理を兼ねるため、Railsのような「別プロセスのAPI」という区分けが薄れる | フロントは常にRails APIのクライアント、バックエンドは常にRails API、という役割分担が明確 |
+| このリポジトリでの位置付け | 不採用(Next.jsへの全面移行は検討していない) | 採用済み。既存のRails(API)+フロントを、SEO対策のためFramework Mode(SSR)構成に移行した |
 
 ポイントは、**Next.js は「フロントエンドとバックエンドを1つのNode.jsアプリに
-統合する」方向の設計**であるのに対し、**React Router v8 の Data Mode は
-「Railsが担ってきたAPIサーバーの役割はそのままに、フロントエンドだけを
-SPAとして差し替える」方向の設計**である点です。このリポジトリは後者の
-構成(Rails API + フロントSPA)を前提にしているため、`loader` / `action` は
-Server Component / Server Action のように直接データベースや業務ロジックに
-アクセスすることはなく、必ず `lib/api.ts` を経由してRails APIにHTTPリクエストを
-送ります(3〜5節で説明した内容と同じです)。
+統合する」方向の設計**であるのに対し、**React Router v8 の Framework Mode は
+「Railsが担ってきたAPIサーバーの役割はそのままに、フロントエンドのレンダリング場所
+(サーバー/ブラウザ)だけを両対応にする」方向の設計**である点です。Data Mode
+からの変化は「SSRが増えたこと」であって、「Railsの役割が減ったこと」ではありません。
+`loader` / `action` は Server Component / Server Action のように直接データベースや
+業務ロジックにアクセスすることはなく、Framework Mode 移行後も変わらず
+`lib/api.ts` を経由してRails APIにHTTPリクエストを送ります(3〜5節で説明した内容と
+同じです)。
 
 言い換えると、Next.jsの`loader`相当(Server Component)は「Railsのコントローラを
 JavaScript側に持ってくる」構成に近く、React Router v8の`loader`は「Railsの
-コントローラはRails側に残したまま、それを呼び出すクライアントを差し替える」
-構成に近い、と捉えると馴染みやすいと思います。
+コントローラはRails側に残したまま、それを呼び出すクライアントのレンダリング方式を
+差し替える」構成に近い、と捉えると馴染みやすいと思います。
 
-なお、上記は Data Mode 採用時点(移行前)の判断であり、SSR(サーバーサイド
-レンダリング)が不要という前提に立っていました。その後、将来的な SEO 対策を
-見据えて React Router v8 の Framework Mode(SSR)へ移行する方針に転換しています
-(CLAUDE.md参照)。Node.js サーバーの運用コスト(デプロイ・スケーリング・監視対象の
-増加)は増えますが、初回 HTML にコンテンツと `<title>`/`<meta>` を含められる点が
-SEO上不可欠であるため、このトレードオフを受け入れる判断をしています。
+SSR化のトレードオフとして、Node.js サーバーの運用コスト(デプロイ・スケーリング・
+監視対象の増加。Data Mode時代は静的ファイル一式をNginx等で配信するだけで済んでいた)
+は増えましたが、初回 HTML にコンテンツと `<title>`/`<meta>` を含められる点がSEO上
+不可欠であるため、このトレードオフを受け入れる判断をしています。
+
+### 10-2. `loader` / `action` の実行コンテキスト: サーバーとブラウザの2箇所
+
+Data Mode(SPA)では `loader` / `action` は常にブラウザの中(Reactアプリの実行環境)
+だけで動いていました。Framework Mode ではこれが**サーバー(Node プロセス)側でも
+実行されうる**ようになる点が、最も注意が必要な違いです。
+
+- **初回アクセス時 / ブラウザで直接URLを叩いた時**: `entry.server.tsx` が
+  リクエストごとに呼ばれ、該当ルートの `loader` はサーバー側(frontendコンテナ内の
+  Node プロセス)で実行されます。ここで取得したデータを埋め込んだ状態の HTML が
+  レスポンスとして返るため、`curl` で取得しても中身入りのHTMLになります(= SSR)。
+- **リンククリック等の画面遷移時**: 一度ページがハイドレーション
+  (`entry.client.tsx` の `hydrateRoot()`)された後の遷移は、Data Mode時代と同様
+  ブラウザ側で `loader` / `action` が実行されます(裏側でRails APIに直接fetchする)。
+
+つまり同じ `loader` 関数が、リクエストのタイミングによってサーバー・ブラウザの
+どちらでも実行される可能性があります。この違いが問題になるのが、次に説明する
+「Rails APIのURL」です。サーバー側のNodeプロセスと、ブラウザは、同じ
+`http://backend:3000/...` というURLに対して異なる意味を持ちます(サーバー側は
+Dockerネットワーク内のホスト名として解決できますが、ブラウザ側は `backend` という
+ホスト名をそもそも解決できません)。
+
+### 10-3. `lib/api.ts` がなぜ2つのベースURLを持つか
+
+上記の理由により、`lib/api.ts` はRails APIのベースURLを実行コンテキストに応じて
+切り替える設計になっています(`resolveApiBaseUrl()` 関数。実装コメントも参照)。
+
+| 実行コンテキスト | 参照する環境変数 | 値の例 | 理由 |
+|---|---|---|---|
+| サーバー(Node プロセス、frontendコンテナ内) | `API_BASE_URL_INTERNAL`(`process.env` 経由) | `http://backend:3000/api/v1` | `localhost` はコンテナ自身を指してしまいbackendコンテナに届かない。`docker-compose.yml` の `DB_HOST: db` と同じ考え方で、コンテナ間はサービス名 `backend` で疎通する |
+| ブラウザ | `VITE_API_BASE_URL`(`import.meta.env` 経由) | `http://localhost:3000/api/v1` | ブラウザ自身から見えるURLが必要。`docker-compose.yml` で `backend` サービスがホストの `3000` 番に公開されているため `localhost:3000` でアクセスできる |
+
+`typeof document === 'undefined'` でどちらの実行コンテキストか判定し(`document` は
+ブラウザにのみ存在するグローバルオブジェクト)、サーバー側では設定漏れに気付けるよう
+`API_BASE_URL_INTERNAL` 未設定時に明示的にエラーを投げる一方、ブラウザ側では
+`VITE_API_BASE_URL` 未設定時も `http://localhost:3000/api/v1` にフォールバックする
+非対称な作りになっています。これはサーバー側には「とりあえず動く」デフォルト値を
+安全に用意できない(`localhost` はコンテナ自身を指してしまうため)一方、ブラウザ側の
+`localhost:3000` は開発時のデフォルト構成として妥当だからです。
+
+なお `API_BASE_URL_INTERNAL` には(`VITE_API_BASE_URL` と違い)あえて `VITE_` prefix を
+付けていません。Viteの仕様上、`VITE_` prefixが付いた環境変数だけがビルド時に
+クライアントのJSバンドルへ埋め込まれるため、サーバー専用の値に `VITE_` を付けてしまうと
+ブラウザ向けバンドルに漏れ出してしまいます(実害は薄いものの、意図しない情報漏洩を
+避けるため区別しています)。
+
+ベースURLの解決はモジュール読み込み時に1回だけ行うのではなく、`apiGet` 等の呼び出し
+時に毎回評価しています。`lib/api.ts` は `loader` / `action` だけでなく
+`routes-legacy/task-list-legacy.tsx`(素の `useEffect` + fetch。10-2で説明した通り
+SSR自体はされるが、API呼び出しはブラウザの `useEffect` でのみ発生する)からも
+importされるため、モジュール読み込み時点で `API_BASE_URL_INTERNAL` 未設定を
+例外にしてしまうと、本来Rails APIを呼ばない `/` や `/tasks-legacy` のSSRまで
+巻き込んで失敗させてしまいます。呼び出し時まで評価を遅延させることで、この
+巻き込みを避けています。
 
 ## 11. ログイン処理について(オプション要件・将来の検討事項)
 
