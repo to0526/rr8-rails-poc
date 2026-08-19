@@ -11,9 +11,12 @@
 // - 送信中の状態管理や、成功時のリダイレクトを自分で useState / useNavigate
 //   で組み立てなくてよい
 // という点。
-import { Form, redirect, useActionData, type ActionFunctionArgs } from 'react-router'
+import { Form, redirect, useActionData, type ActionFunctionArgs, type MetaFunction } from 'react-router'
 import { apiPost } from '../lib/api'
 import styles from './task-new.module.css'
+
+// meta: このルート("/tasks/new")の <title> を決める関数。
+export const meta: MetaFunction = () => [{ title: 'タスク作成 | rr8-rails-poc' }]
 
 type Task = {
   id: number

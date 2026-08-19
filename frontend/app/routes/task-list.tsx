@@ -20,11 +20,20 @@
 //   ビルドエラーにならず気付きにくい、キャッシュが効きすぎて更新が反映されにくい、
 //   といったトレードオフがある。
 // - styles: task-list.module.css を import した CSS Modules。
-import { Link, useFetcher, useLoaderData, type ActionFunctionArgs } from 'react-router'
+import { Link, useFetcher, useLoaderData, type ActionFunctionArgs, type MetaFunction } from 'react-router'
 import { apiGet, apiPatch } from '../lib/api'
 import styles from './task-list.module.css'
 
 const taskIconUrl = '/task-icon.svg'
+
+// meta: このルート("/tasks")の <title>/<meta name="description"> を決める関数。
+// このページ自体は loader の取得結果(タスク件数など)をタイトルに反映していない
+// (一覧そのものが内容なので、固定タイトルで十分と判断した)。1件ごとの内容を
+// 動的にタイトルへ反映する例は routes/task-show.tsx を参照。
+export const meta: MetaFunction = () => [
+  { title: 'タスク一覧 | rr8-rails-poc' },
+  { name: 'description', content: 'Rails API から取得したタスクの一覧です。' },
+]
 
 type Task = {
   id: number

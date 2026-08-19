@@ -1,6 +1,18 @@
 import type { ReactNode } from 'react'
-import { Links, Meta, Outlet, Scripts, ScrollRestoration } from 'react-router'
+import { Links, Meta, Outlet, Scripts, ScrollRestoration, type MetaFunction } from 'react-router'
 import './index.css'
+
+// meta: このルート(root、つまり全ページの最上位)の <title>/<meta> を決める関数。
+//
+// 各ルートファイル(top-page.tsx など)が個別に meta() を export している場合、
+// React Router はそのルートの meta() の戻り値をそのまま使い、ここ(root)の
+// 戻り値には「差し替え」られる(足し算にはならないので <title> が2つ出力される
+// 心配はない)。逆に、ルート側が meta() を export していない場合
+// (routes-legacy/task-list-legacy.tsx が該当。あえて対比用に export していない)は、
+// この root の meta() がそのまま使われ、この汎用的なタイトルが表示され続ける
+// = SSR してもタイトルがページ内容に応じて変化しない、という Declarative Mode の
+// 弱点をそのまま見せる形になる。
+export const meta: MetaFunction = () => [{ title: 'rr8-rails-poc' }]
 
 // Framework Mode における最上位のレイアウト。
 //
@@ -23,13 +35,10 @@ export function Layout({ children }: { children: ReactNode }) {
         <meta charSet="UTF-8" />
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        {/* 各ルートが meta() を export していない場合に使われるデフォルトの
-            <title>(PR17でルートごとに動的な <title> を追加する予定)。 */}
-        <title>rr8-rails-poc</title>
         {/* Meta / Links は、各ルートファイルの meta() / links() エクスポートの
-            内容をこの位置に描画するための React Router 提供コンポーネント
-            (現時点ではどのルートも meta()/links() を定義していないため
-            何も出力されない)。 */}
+            内容をこの位置に描画するための React Router 提供コンポーネント。
+            <title> もこの中で出力される(上部の root の meta() 参照。
+            各ルートファイルの meta() 説明も参照)。 */}
         <Meta />
         <Links />
       </head>
