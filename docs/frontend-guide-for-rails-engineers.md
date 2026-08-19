@@ -1,19 +1,13 @@
 # フロントエンド構成ガイド(Railsエンジニア向け)
 
-このドキュメントは、Railsエンジニアのチームに React Router v8 の導入を検討して
-もらうために、`frontend/` ディレクトリの構成と設計思想を Rails の概念と対応付け
-ながら説明するものです。
-
-本ドキュメントは当初 Data Mode(SPA、SSRなし)を前提に書かれていましたが、
-将来的な SEO 対策を見据えて **Framework Mode(SSR)へ移行**したため、
-現在の記述はすべて移行後(Framework Mode)の構成を前提にしています。
-Data Mode と比べて何が変わったか要点だけ知りたい場合は、10節
-(Next.jsとの比較・実行コンテキスト・`lib/api.ts` の設計)を参照してください。
+このドキュメントは、Railsエンジニアのチームに React Router v8(Framework Mode)の
+導入を検討してもらうために、`frontend/` ディレクトリの構成と設計思想を Rails の
+概念と対応付けながら説明するものです。SEO対策のためサーバーサイドレンダリング
+(SSR)を行う **Framework Mode** を採用しており、以下の記述はすべてこの構成を
+前提にしています。
 
 検証結果そのもの(採用可否の所感)は [docs/poc-summary.md](./poc-summary.md)、
-Data Mode 時代の実装を進めた際のPR単位のロードマップは
-[docs/implementation-plan.md](./implementation-plan.md)、Framework Mode への
-移行時のロードマップは
+実装を進めた際のPR単位のロードマップは
 [docs/implementation-plan-framework-mode.md](./implementation-plan-framework-mode.md)
 を参照してください。本ドキュメントは「コードを読むための地図」に相当します。
 
@@ -42,7 +36,7 @@ frontend/
     │   └── api.ts                # Rails APIを呼ぶ共通関数(ApplicationController的な共通処理)
     └── assets/                   # import して使う画像
 ```
-(`public/` は Data Mode時代と変わらず、そのまま配信される静的ファイル置き場です)
+(`public/` はそのまま配信される静的ファイル置き場です)
 
 Rails でいうと、`routes.ts` が `config/routes.rb`、`routes/` 配下の
 各ファイルが「コントローラのアクション1つ+対応するビュー1つ」を1ファイルに
@@ -62,15 +56,11 @@ Rails でいうと、`routes.ts` が `config/routes.rb`、`routes/` 配下の
 `<ServerRouter>` が、ブラウザでのハイドレーション後は `entry.client.tsx` の
 `<HydratedRouter>` が、`routes.ts` の定義に基づいて実際にURL変化や
 フォーム送信を検知し、`loader` / `action` を呼び分けたり結果をコンポーネントに
-渡したりします(Data Mode時代の `createBrowserRouter([...])` が返す
-`router` オブジェクトに相当する働きですが、Framework Modeではその実体が
-`routes.ts` 側のファイルベースの規約とサーバー/クライアント2つのエントリに
-分かれています)。「React Router」というライブラリ名そのものと区別するため、
+渡したりします。「React Router」というライブラリ名そのものと区別するため、
 図では `router` と表記しています。
 
 初回アクセス(SSR)については10-2節で別途詳しく説明するため、この図では
-Data Mode時代と変わらない「ハイドレーション後のブラウザ内での動き」を
-表しています。
+「ハイドレーション後のブラウザ内での動き」を表しています。
 
 ```mermaid
 sequenceDiagram
@@ -112,8 +102,7 @@ sequenceDiagram
 ポイントは、**`action` が完了すると React Router が自動的に同じルートの
 `loader` を再実行する**ことです。これにより「更新後は常に最新のサーバー側の
 値が画面に反映される」ことが保証され、`useFetcher` の楽観的UIの
-ロールバックもこの仕組みの上に成り立っています(詳細は後述)。この挙動は
-Data Mode・Framework Modeのどちらでも変わりません。
+ロールバックもこの仕組みの上に成り立っています(詳細は後述)。
 
 ## 2. Rails の概念との対応表
 
@@ -150,17 +139,14 @@ export default [
 ] satisfies RouteConfig
 ```
 
-Data Mode時代の `router.tsx`(`createBrowserRouter([{ path, Component, loader,
-action }, ...])`)との最大の違いは、**`loader` / `action` をこのファイル側から
-明示的に渡すのではなく、紐付けたルートファイルが `export` している
-`loader` / `action` という**固定名の関数**をReact Routerが自動的に拾う**という
-規約になっている点です。そのため、たとえば `taskListLoader` のような
-任意の名前を付けることはできず、必ず `loader` / `action` という名前で
-`export` する必要があります(4節・5節のコード例を参照)。
+ポイントは、**`loader` / `action` をこのファイル側から明示的に渡すのではなく、
+紐付けたルートファイルが `export` している `loader` / `action` という
+固定名の関数をReact Routerが自動的に拾う**という規約になっている点です。
+そのため、任意の名前を付けることはできず、必ず `loader` / `action` という
+名前で `export` する必要があります(4節・5節のコード例を参照)。
 
 `resources :tasks` のように一括生成するのではなく、パスごとに明示的に
-`route()` を列挙する(ファイルベースルーティングを使わない)点は
-Data Mode時代から変わらない方針です。
+`route()` を列挙する(ファイルベースルーティングを使わない)方針です。
 
 ## 4. `loader`: 画面表示前のデータ取得(index / show 相当)
 
@@ -209,7 +195,7 @@ Rails のコントローラと違い、`loader` は **Reactコンポーネント
 
 なお、Framework Mode では `loader` の実行場所(サーバー/ブラウザ)がURLへの
 アクセス方法によって変わります。詳細は10-2節で説明しますが、以下の図・
-コードは Data Mode時代と同じ「ブラウザ内での画面遷移」を前提にしています。
+コードは「ブラウザ内での画面遷移」を前提にしています。
 
 ### loaderの処理フロー(`/tasks/:id` に遷移した場合)
 
@@ -440,16 +426,12 @@ export async function apiGet<T>(path: string): Promise<T> {
 }
 ```
 
-Data Mode時代はベースURLが `VITE_API_BASE_URL` の1つだけで済んでいましたが、
-Framework Mode では `loader` / `action` がサーバー(Node プロセス)・ブラウザの
-どちらでも実行されうるため(10-2節)、`resolveApiBaseUrl()` で実行場所ごとに
-参照する環境変数を切り替えています。なぜ2つのベースURLが必要なのか、
-具体的な値やフォールバックの非対称性については **10-3節で詳しく説明**して
-いるので、ここでは「単純な定数ではなく、呼び出しごとに実行場所を判定する
-関数になった」という変化だけ押さえてください。
+`loader` / `action` はサーバー(Node プロセス)・ブラウザのどちらでも実行され
+うるため(10-2節)、`resolveApiBaseUrl()` で実行場所ごとに参照する環境変数を
+切り替えています。なぜ2つのベースURLが必要なのか、具体的な値やフォールバックの
+非対称性については **10-3節で詳しく説明**しています。
 
-ポイントは **GET と POST/PATCH でエラーの扱い方を分けている**ことです
-(この点はベースURLの解決方法が変わっても同じです)。
+ポイントは **GET と POST/PATCH でエラーの扱い方を分けている**ことです。
 
 - `apiGet`: 失敗(4xx/5xx)は問答無用で例外(`ApiError`)を投げる
 - `apiPost` / `apiPatch`: 422(バリデーションエラー)だけは例外にせず
@@ -498,8 +480,8 @@ function TaskListLegacy() {
 ### loader版とLegacy版の流れの違い(ブラウザ内遷移の場合)
 
 同じ「一覧画面を表示してAPIを叩く」処理でも、データ取得のタイミングと
-状態管理の主体がどちらにあるかが異なります。以下はData Mode時代と変わらない
-「ハイドレーション後、ブラウザ内でリンクをクリックして遷移した場合」の流れです。
+状態管理の主体がどちらにあるかが異なります。以下は「ハイドレーション後、
+ブラウザ内でリンクをクリックして遷移した場合」の流れです。
 
 ```mermaid
 sequenceDiagram
@@ -535,9 +517,8 @@ loader版は「取得してから描画する」、Legacy版は「先に描画�
 
 ### 初回アクセス(SSR)時の違い: SEO効果の有無
 
-上記はブラウザ内遷移の話でしたが、Framework Mode 移行後は**初回アクセス時
-(`curl` 等でJSを実行せずにアクセスした場合)の挙動にも両者で明確な差**が
-生まれています。
+上記はブラウザ内遷移の話でしたが、**初回アクセス時(`curl` 等でJSを実行せずに
+アクセスした場合)の挙動にも両者で明確な差**があります。
 
 - `/tasks`(loader版): `loader` がサーバー側で実行され、その結果を使って
   `<ul>` 等の一覧HTMLと `<title>タスク一覧 | rr8-rails-poc</title>` が
@@ -557,12 +538,11 @@ loader版は「取得してから描画する」、Legacy版は「先に描画�
 
 ## 10. Next.js との比較、そして採用した Framework Mode(SSR)構成
 
-このリポジトリは当初 React Router v8 の Data Mode(SPA、SSRなし)のみを採用する
-方針でしたが、将来的な SEO 対策を見据えて **Framework Mode(SSR)へ移行**しました
-(移行の経緯・確定方針は `docs/implementation-plan-framework-mode.md` を参照)。
-以前このセクションには「SSR は不要」という結論を書いていましたが、それは撤回します。
-以下では、まず Next.js との対比で Framework Mode の位置付けを補足し、続けて
-`loader` / `action` の実行コンテキストの違いと、それに起因する `lib/api.ts` の設計を
+このリポジトリは、将来的な SEO 対策を見据えて React Router v8 の
+**Framework Mode(SSR)** を採用しています(採用の経緯・確定方針は
+`docs/implementation-plan-framework-mode.md` を参照)。以下では、まず
+Next.js との対比で Framework Mode の位置付けを補足し、続けて `loader` /
+`action` の実行コンテキストの違いと、それに起因する `lib/api.ts` の設計を
 説明します。
 
 ### 10-1. Next.js (App Router) との対比
@@ -572,22 +552,20 @@ loader版は「取得してから描画する」、Legacy版は「先に描画�
 
 | 観点 | Next.js (App Router) | React Router v8 (Framework Mode) |
 |---|---|---|
-| 実行環境 | Node.js サーバーが必須(Vercel or 自前サーバーでSSR実行) | 同じく Node.js サーバーが必須(`react-router-serve` 等でSSR実行。Data Mode時代の「静的ファイルのみで配信可」ではなくなった) |
-| ルーティング定義方法 | `app/` 配下のディレクトリ構造がそのままルーティングになる(ファイルベース) | `routes.ts` に `route()` / `index()` で配列として明示的に列挙(集中管理。ファイルベースルーティングは使わない方針は変更なし) |
+| 実行環境 | Node.js サーバーが必須(Vercel or 自前サーバーでSSR実行) | 同じく Node.js サーバーが必須(`react-router-serve` 等でSSR実行) |
+| ルーティング定義方法 | `app/` 配下のディレクトリ構造がそのままルーティングになる(ファイルベース) | `routes.ts` に `route()` / `index()` で配列として明示的に列挙(集中管理) |
 | データ取得 | Server Component 内で直接 DB/ORM を呼べる(`await db.query()` 等) | `loader` は必ず `fetch`(`lib/api.ts` 経由)でRails APIを呼ぶ(HTTP境界を越える) |
 | 更新処理 | Server Actions(`"use server"`)がクライアントから直接呼べるRPC関数になる。フロントとバックエンドの境界が曖昧になる | `action` は `fetch` でRails APIにリクエストを送るだけ。処理の実体は常にRails側 |
 | フロント/バックエンドの分離 | Server Component / Server Action がバックエンド処理を兼ねるため、Railsのような「別プロセスのAPI」という区分けが薄れる | フロントは常にRails APIのクライアント、バックエンドは常にRails API、という役割分担が明確 |
-| このリポジトリでの位置付け | 不採用(Next.jsへの全面移行は検討していない) | 採用済み。既存のRails(API)+フロントを、SEO対策のためFramework Mode(SSR)構成に移行した |
+| このリポジトリでの位置付け | 不採用(Next.jsへの全面移行は検討していない) | 採用済み。既存のRails(API)+フロントを、SEO対策のためFramework Mode(SSR)構成にしている |
 
 ポイントは、**Next.js は「フロントエンドとバックエンドを1つのNode.jsアプリに
 統合する」方向の設計**であるのに対し、**React Router v8 の Framework Mode は
 「Railsが担ってきたAPIサーバーの役割はそのままに、フロントエンドのレンダリング場所
-(サーバー/ブラウザ)だけを両対応にする」方向の設計**である点です。Data Mode
-からの変化は「SSRが増えたこと」であって、「Railsの役割が減ったこと」ではありません。
-`loader` / `action` は Server Component / Server Action のように直接データベースや
-業務ロジックにアクセスすることはなく、Framework Mode 移行後も変わらず
-`lib/api.ts` を経由してRails APIにHTTPリクエストを送ります(3〜5節で説明した内容と
-同じです)。
+(サーバー/ブラウザ)だけを両対応にする」方向の設計**である点です。`loader` /
+`action` は Server Component / Server Action のように直接データベースや業務
+ロジックにアクセスすることはなく、`lib/api.ts` を経由してRails APIにHTTP
+リクエストを送ります(3〜5節で説明した内容と同じです)。
 
 言い換えると、Next.jsの`loader`相当(Server Component)は「Railsのコントローラを
 JavaScript側に持ってくる」構成に近く、React Router v8の`loader`は「Railsの
@@ -595,23 +573,21 @@ JavaScript側に持ってくる」構成に近く、React Router v8の`loader`�
 差し替える」構成に近い、と捉えると馴染みやすいと思います。
 
 SSR化のトレードオフとして、Node.js サーバーの運用コスト(デプロイ・スケーリング・
-監視対象の増加。Data Mode時代は静的ファイル一式をNginx等で配信するだけで済んでいた)
-は増えましたが、初回 HTML にコンテンツと `<title>`/`<meta>` を含められる点がSEO上
-不可欠であるため、このトレードオフを受け入れる判断をしています。
+監視対象の増加)は発生しますが、初回 HTML にコンテンツと `<title>`/`<meta>` を
+含められる点がSEO上不可欠であるため、このトレードオフを受け入れる判断をしています。
 
 ### 10-2. `loader` / `action` の実行コンテキスト: サーバーとブラウザの2箇所
 
-Data Mode(SPA)では `loader` / `action` は常にブラウザの中(Reactアプリの実行環境)
-だけで動いていました。Framework Mode ではこれが**サーバー(Node プロセス)側でも
-実行されうる**ようになる点が、最も注意が必要な違いです。
+Framework Mode では、`loader` / `action` が**サーバー(Node プロセス)・
+ブラウザのどちらでも実行されうる**点が、最も注意が必要なポイントです。
 
 - **初回アクセス時 / ブラウザで直接URLを叩いた時**: `entry.server.tsx` が
   リクエストごとに呼ばれ、該当ルートの `loader` はサーバー側(frontendコンテナ内の
   Node プロセス)で実行されます。ここで取得したデータを埋め込んだ状態の HTML が
   レスポンスとして返るため、`curl` で取得しても中身入りのHTMLになります(= SSR)。
 - **リンククリック等の画面遷移時**: 一度ページがハイドレーション
-  (`entry.client.tsx` の `hydrateRoot()`)された後の遷移は、Data Mode時代と同様
-  ブラウザ側で `loader` / `action` が実行されます(裏側でRails APIに直接fetchする)。
+  (`entry.client.tsx` の `hydrateRoot()`)された後の遷移は、ブラウザ側で
+  `loader` / `action` が実行されます(裏側でRails APIに直接fetchする)。
 
 つまり同じ `loader` 関数が、リクエストのタイミングによってサーバー・ブラウザの
 どちらでも実行される可能性があります。この違いが問題になるのが、次に説明する
@@ -697,9 +673,9 @@ APIリクエストにログイン中のセッションCookieが自動的に付�
 管理したりOAuthフローを組んだりする必要がない、という意味でこの構成の大きな利点です。
 
 **ただしこれはあくまで `loader` / `action` が「ブラウザ側」で実行される場合
-(ハイドレーション後の画面遷移。10-2節参照)の話です。** Framework Mode 移行に
-伴い、`loader` は初回アクセス時に**サーバー(Node プロセス)側**でも実行され
-うるようになりました。この場合にAPIへ送られるのはブラウザの `fetch` ではなく
+(ハイドレーション後の画面遷移。10-2節参照)の話です。** `loader` は初回
+アクセス時に**サーバー(Node プロセス)側**でも実行されます。この場合に
+APIへ送られるのはブラウザの `fetch` ではなく
 Node プロセスの `fetch` によるリクエストであり、ブラウザが自動的にCookieを
 付与してくれる仕組みの外側にあるため、**「同一オリジンなら自動送信」という
 挙動は成り立ちません**。サーバー側で実行される `loader` / `action` で
@@ -751,13 +727,11 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 ```
 
-Data Mode時代のこの節は「`window.location.href` を使えばよい」という
-結論でしたが、Framework Mode では `loader` がサーバー側で実行される
-可能性がある以上、ブラウザ専用のグローバル変数(`window`)に依存する実装は
-そのままでは使えません。`redirect()` はサーバー・ブラウザのどちらで
-実行されてもHTTPリダイレクト相当の `Response` を返すだけなので、
-実行場所を問わず動く設計にするならこちらを使う方が筋が良い、という
-点がFramework Mode移行によって新たに見えてきた検討事項です。
+`loader` はサーバー側で実行される可能性がある以上、ブラウザ専用の
+グローバル変数(`window`)に依存する実装はそのままでは使えません。
+`redirect()` はサーバー・ブラウザのどちらで実行されてもHTTPリダイレクト
+相当の `Response` を返すだけなので、実行場所を問わず動く設計にするなら
+こちらを使う方が筋が良いです。
 
 ### 11-4. CSRFトークンの扱い
 
@@ -776,8 +750,7 @@ CSRF保護(`protect_from_forgery`)を含まないため、Cookieセッション�
 ### 11-5. 処理フロー図
 
 初回アクセス(サーバー側で `loader` が実行される)の場合、ブラウザが送った
-Cookieを `loader` が明示的にRails APIへ転送する(11-2節)必要がある点が、
-Data Mode時代からの一番の変化点です。
+Cookieを `loader` が明示的にRails APIへ転送する(11-2節)必要があります。
 
 ```mermaid
 sequenceDiagram
@@ -829,13 +802,9 @@ sequenceDiagram
 (CLAUDE.md参照)ですが、ローカルでの本番相当ビルド検証(PR19)は実施しており、
 それを踏まえて将来検討する際の指針として整理しておきます。
 
-**Data Mode時代からの最大の変更点**: Data Mode(CSR)は「ビルドが完了すれば
-あとは静的ファイルを配信するだけ」でしたが、Framework Mode(SSR)では
-**リクエストのたびにサーバー側でHTMLを組み立てる必要がある**ため、
-**常時稼働するNode.jsプロセスが必須**になりました。以前のこの節では
-「Node.jsサーバーの常駐は不要」と説明していましたが、その前提が変わっています。
-10節で触れた「SSR化のトレードオフ」が、デプロイの観点で最も具体的に現れる
-のがこの節です。
+Framework Mode(SSR)では**リクエストのたびにサーバー側でHTMLを組み立てる
+必要がある**ため、**常時稼働するNode.jsプロセスが必須**です。10節で触れた
+「SSR化のトレードオフ」が、デプロイの観点で最も具体的に現れるのがこの節です。
 
 ### 12-1. ビルド成果物: クライアント用とサーバー用の2種類
 
@@ -843,8 +812,7 @@ sequenceDiagram
 `frontend/build/` 配下に2つの成果物が出力されます。
 
 - `build/client/` — ブラウザに配信する静的ファイル一式(ハッシュ付きJS/CSS、
-  ハイドレーション用の `entry.client.tsx` のバンドルなど)。Data Mode時代の
-  `dist/` に近いもの
+  ハイドレーション用の `entry.client.tsx` のバンドルなど)
 - `build/server/` — `entry.server.tsx` を中心にした、**Node.js上で動かす
   サーバー用JSバンドル**(`index.js`)。これを実行するプロセスが、リクエストを
   受けるたびに `loader` を呼び、HTMLを組み立てて返す
@@ -887,10 +855,9 @@ opt-inな `frontend-prod` サービス(Compose profile `prod`)として追加し
 
 11節の「同一オリジン配信」を実現する方法としては、主に2パターンが
 考えられます。いずれも `exampl.com` という同一オリジンを維持できます。
-Data Mode時代に検討していた「S3+CloudFrontのような純粋な静的ホスティングに
-配置する」パターンは、SSRのために常時稼働するNode.jsプロセスが必要になった
-ため選べなくなった点に注意してください(静的ファイルのみのホスティングでは
-`loader` を実行できません)。
+SSRのために常時稼働するNode.jsプロセスが必要なため、静的ファイルのみの
+ホスティング(S3+CloudFrontのような構成)は選べません(`loader` を
+実行できないため)。
 
 | パターン | 概要 |
 |---|---|
@@ -898,34 +865,31 @@ Data Mode時代に検討していた「S3+CloudFrontのような純粋な静的�
 | b. リバースプロキシ/ALBで分離 | nginxやALB等のパスベースルーティングで `/new_page/*` を(静的ホスティングではなく)常時稼働するNode.jsサービス(ECS等)へ振り分け、`/api/*` はRailsに振り分ける |
 
 いずれのパターンでも、**Node.jsプロセスをどう常時起動・監視・スケールさせるか**
-(ヘルスチェック、再起動、水平スケーリング等)という、Data Mode時代には
-存在しなかった運用上の検討事項が新たに発生します。
+(ヘルスチェック、再起動、水平スケーリング等)という運用上の検討事項が
+発生します。
 
-### 12-4. クライアントサイドルーティングの扱い: キャッチオールは不要になった
+### 12-4. クライアントサイドルーティングの扱い
 
-Data Mode時代は「`/new_page` 配下のパスはすべて `index.html` を返す
-キャッチオール設定が必要」と説明していましたが、これは**Framework Modeでは
-不要**です。`react-router-serve`(≒サーバー側のNode.jsプロセス)自体が
-`routes.ts` の定義を理解しており、`/new_page/xxx` のようなサブパスへの
-直接アクセスやリロードに対しても、そのつどサーバー側で対応する `loader` を
-実行して正しいHTMLを都度組み立てて返せるためです。「配下のパスはすべて
-同じ `index.html` を返し、実際の画面切り替えはクライアント側のJavaScriptが
-行う」という発想自体が、SSR前提の構成には当てはまらなくなりました。
+`react-router-serve`(≒サーバー側のNode.jsプロセス)自体が `routes.ts` の
+定義を理解しており、`/new_page/xxx` のようなサブパスへの直接アクセスや
+リロードに対しても、そのつどサーバー側で対応する `loader` を実行して
+正しいHTMLを都度組み立てて返します。そのため「配下のパスはすべて同じ
+`index.html` を返し、実際の画面切り替えはクライアント側のJavaScriptが行う」
+というキャッチオール設定は不要です。
 
 ### 12-5. キャッシュ戦略
 
 - `build/client/assets/` 配下のハッシュ付きJS/CSSは、ファイル内容が変われば
   ファイル名も変わるため、長期キャッシュ
   (`Cache-Control: public, max-age=31536000, immutable` など)にして
-  問題ありません(ここはData Mode時代と同じ考え方です)。
+  問題ありません。
 - 一方、**SSRで返されるHTML自体は「ビルドのたびに変わる静的ファイル」ではなく
-  「リクエストごとに動的に生成されるレスポンス」**になったため、Data Mode時代の
-  「`index.html` を短期キャッシュ/`no-cache` にする」という単純な話ではなく
-  なりました。ページ内容がユーザーやログイン状態によって変わりうる場合、
-  そもそもキャッシュ不可(`Cache-Control: private, no-store` 等)にする必要が
-  あります。ページ内容が全ユーザー共通で変わらない場合に限り、CDN等での
-  短時間キャッシュ(`stale-while-revalidate` 等)を検討する余地はありますが、
-  本PoCでは未検証です。
+  「リクエストごとに動的に生成されるレスポンス」**です。ページ内容がユーザーや
+  ログイン状態によって変わりうる場合、そもそもキャッシュ不可
+  (`Cache-Control: private, no-store` 等)にする必要があります。ページ内容が
+  全ユーザー共通で変わらない場合に限り、CDN等での短時間キャッシュ
+  (`stale-while-revalidate` 等)を検討する余地はありますが、本PoCでは
+  未検証です。
 
 ### 12-6. ビルド〜配信の流れ
 
@@ -972,8 +936,7 @@ sequenceDiagram
     JSバンドル内にbase64のdata URLとして埋め込まれる(top-page.tsxで確認済み)
   - `public/` 配下を `"/xxx.svg"` という絶対パスで直接参照
     → ビルド時に一切加工されずそのままコピーされる(ファイル名変更に気付きにくい)。
-    Framework Mode移行後もこの挙動は変わらず、`public/` は
-    (Data Mode時代の`index.html`が撤去された後も)Viteが引き続き直接配信する
+    `public/` はViteが引き続き直接配信する
   - 実運用では基本的に `app/assets/` + import 方式を標準にするのが良さそう、
     というのが検証時の所感です(詳細は [poc-summary.md](./poc-summary.md) 参照)。
 
@@ -988,14 +951,13 @@ React Router のルーティング機構を経由せずに単体テストでき�
 docker compose exec frontend npm run test
 ```
 
-**Framework Mode移行に伴う変更点**: テスト実行時の設定ファイルが
-`vite.config.ts` から `vitest.config.ts` に分離されました。`vite.config.ts` が
-使う `@react-router/dev/vite` の `reactRouter()` プラグインはSSRビルド前提の
-変換を行うため、Vitest上での(SSRを介さない)通常のユニットテスト実行とは
-相性が良くありません。そのため、素の `@vitejs/plugin-react` を使う専用の
-`vitest.config.ts` を用意し、Vitestは存在する場合こちらを優先して読み込む
-という仕組みで住み分けています(`test.environment: 'jsdom'` / `setupFiles` の
-指定自体はData Mode時代と同じ内容です)。
+テスト実行時の設定ファイルは `vite.config.ts` から独立した `vitest.config.ts`
+です。`vite.config.ts` が使う `@react-router/dev/vite` の `reactRouter()`
+プラグインはSSRビルド前提の変換を行うため、Vitest上での(SSRを介さない)
+通常のユニットテスト実行とは相性が良くありません。そのため、素の
+`@vitejs/plugin-react` を使う専用の `vitest.config.ts` を用意し、Vitestは
+存在する場合こちらを優先して読み込むという仕組みで住み分けています
+(`test.environment: 'jsdom'` / `setupFiles` を指定)。
 
 また、typegen(18節)導入後は `loader` / `action` の型が
 `Route.LoaderArgs` / `Route.ActionArgs` という「このルートのパスに特化した
@@ -1027,11 +989,9 @@ import { isRouteErrorResponse, useRouteError } from 'react-router'
 // loader/action内で投げられた例外や、コンポーネントのレンダリング中に
 //発生したエラーを、このコンポーネントがキャッチして表示する。
 //
-// Framework Modeでは、loader/action/metaと同様に「ErrorBoundary」という
-// 固定名でexportしておくだけで、routes.tsでこのファイルに紐付けたルート用の
-// エラー画面として自動的に使われる(Data Mode時代のようにrouter.tsx側の
-// ルートオブジェクトへErrorBoundary: TaskShowErrorBoundaryのように明示的に
-// 渡す必要はない。3節で説明したloader/actionの規約と同じ考え方)。
+// loader/action/metaと同様に「ErrorBoundary」という固定名でexportしておく
+// だけで、routes.tsでこのファイルに紐付けたルート用のエラー画面として
+// 自動的に使われる(3節で説明したloader/actionの規約と同じ考え方)。
 export function ErrorBoundary() {
   const error = useRouteError()
 
@@ -1134,12 +1094,11 @@ export default [
   「送信を受けての処理」という役割分担がそのままフロントエンドに持ち込める
 - 422エラーハンドリングや部分更新(`useFetcher`)など、Rails的なフォーム設計と
   相性の良い仕組みが標準で用意されている
-- Framework Mode(SSR)への移行により、初回HTMLに実際のコンテンツと
-  `<title>`/`<meta>` が含まれるようになりSEO対策が可能になった一方、
-  `loader` / `action` の実行場所(サーバー/ブラウザ)を意識した設計
-  (`lib/api.ts` のベースURL分岐、11節のCookie転送など)や、常時稼働する
-  Node.jsプロセスの運用(12節)が新たに必要になった、というのが
-  Data Mode時代からの最大のトレードオフ
+- Framework Mode(SSR)により、初回HTMLに実際のコンテンツと `<title>`/`<meta>`
+  が含まれSEO対策が可能になる一方、`loader` / `action` の実行場所
+  (サーバー/ブラウザ)を意識した設計(`lib/api.ts` のベースURL分岐、11節の
+  Cookie転送など)や、常時稼働するNode.jsプロセスの運用(12節)が必要になる、
+  というのがこの構成のトレードオフ
 
 採用可否の詳しい所感・懸念点は [docs/poc-summary.md](./poc-summary.md) を
 参照してください。
