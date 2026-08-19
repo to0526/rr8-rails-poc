@@ -19,8 +19,11 @@ Docker 環境上で動かし、実運用への採用可否を判断するため�
 - `useFetcher()` によるフォーム送信・楽観的 UI 更新との相性
 - CORS 設定(`rack-cors`)を挟んだ場合の実際の挙動
 
-認証は **一旦なし**。SEO や SSR が必要になった場合は Framework Mode への移行を
-別途検討するが、現時点ではスコープ外。
+認証は **一旦なし**。
+
+将来的な SEO 対策を見据え、React Router v8 の **Framework Mode(SSR)へ移行する**
+方針が決定している。移行は複数の PR に分割して段階的に進める(詳細は移行計画を参照)。
+移行完了までの間は、本ドキュメントの記述と実装が一時的に乖離する箇所がある点に注意。
 
 ## 技術スタックとバージョン
 
@@ -30,9 +33,17 @@ Docker 環境上で動かし、実運用への採用可否を判断するため�
 - Vite 7.0.0+
 - TypeScript
 - Node.js 22.22.0+
-- **Data Mode のみを使用する**(`createBrowserRouter` + `loader` / `action`)
-  - Framework Mode(SSR・ファイルベースルーティング)は使わない
-  - Declarative Mode(`useEffect` + fetch の素朴な書き方)は比較用に 1 画面だけ残す想定
+- **Framework Mode(SSR)を使用する**(`loader` / `action` は Data Mode 時代と同じ形で
+  ルートごとのファイルに実装しつつ、`react-router.config.ts` の `ssr: true` により
+  全ルートをサーバーサイドレンダリングする)
+  - 移行前は Data Mode(`createBrowserRouter`)のみを使用していたが、SEO 対策のため
+    Framework Mode へ移行した(移行の背景・経緯は `docs/frontend-guide-for-rails-engineers.md`
+    10節を参照)
+  - ファイルベースルーティングは使わず、`routes.ts` にルートを明示的に列挙する
+    (Data Mode 時代の `router.tsx` と同じ「集中管理」の考え方を踏襲)
+  - Declarative Mode(`useEffect` + fetch の素朴な書き方)は比較用に 1 画面
+    (`/tasks-legacy`)だけ残す(SSR 対象ではあるが loader を持たないため、Framework Mode
+    移行後も従来通り初回描画は空の状態から `useEffect` で描画される)
 
 ### Backend
 - Ruby on Rails(`rails new --api` で新規作成。APIモード)
@@ -50,6 +61,11 @@ Docker 環境上で動かし、実運用への採用可否を判断するため�
 - 本番運用は想定しない(検証用途に限定)
 
 ## ディレクトリ構成(想定)
+
+> **Note:** 以下は Data Mode 時代からの記述で、Framework Mode 移行が完了していません。
+> `frontend/src/` は Framework Mode の標準に合わせて `frontend/app/` にリネームし、
+> `router.tsx` / `main.tsx` は `routes.ts` / `root.tsx` / `entry.server.tsx` /
+> `entry.client.tsx` に置き換わる予定。移行完了後にこのセクションを更新する。
 
 ```
 .
@@ -144,7 +160,7 @@ Docker 環境上で動かし、実運用への採用可否を判断するため�
 
 ## やらないこと(スコープ外の明示)
 
-- Framework Mode の導入(SSR・typed routes)
 - 認証・認可の実装
-- 本番デプロイ設定(ECS Fargate 等への反映)
+- 本番デプロイ設定(ECS Fargate 等への反映)。Framework Mode 移行後の
+  本番相当ビルド検証も、あくまで Docker 上でのローカル確認に限定する
 - 既存の本番 Rails アプリ(Explorer / OEM Admin など)への一切の変更・参照

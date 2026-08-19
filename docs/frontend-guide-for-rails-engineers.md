@@ -460,12 +460,16 @@ Data Mode版は「取得してから描画する」、Legacy版は「先に描�
 ローディング状態やキャンセル処理を自前で書く必要があるかどうかの差に
 つながっています。
 
-## 10. Next.js との比較: なぜ Framework Mode(App Router)を選ばなかったか
+## 10. Next.js との比較: Framework Mode(App Router)との違い
+
+> **Note:** このリポジトリは現在 Data Mode から Framework Mode(SSR)への移行を
+> 進めています(将来的な SEO 対策のため)。以下は移行前(Data Mode のみ)を前提に
+> 書かれた内容で、「Framework Mode は不採用」という結論部分は現状と異なります。
+> 移行が完了し次第、この節全体を書き直します。当面は Next.js との対比としての
+> 参考情報として読んでください。
 
 「フロントエンドのモダンな構成」というと Next.js(App Router)を思い浮かべる方も
-多いと思うので、このリポジトリが React Router v8 の **Data Mode** を選んでいる
-理由を Next.js との対比で補足します。Framework Mode(Next.js に近い SSR構成)を
-採用しない方針は [CLAUDE.md](../CLAUDE.md) にも明記しているスコープ外事項です。
+多いと思うので、React Router v8 の Data Mode と Next.js の違いを対比で補足します。
 
 | 観点 | Next.js (App Router) | React Router v8 (Data Mode) |
 |---|---|---|
@@ -474,7 +478,7 @@ Data Mode版は「取得してから描画する」、Legacy版は「先に描�
 | データ取得 | Server Component 内で直接 DB/ORM を呼べる(`await db.query()` 等) | `loader` は必ず `fetch` 経由でRails APIを呼ぶ(HTTP境界を越える) |
 | 更新処理 | Server Actions(`"use server"`)がクライアントから直接呼べるRPC関数になる。フロントとバックエンドの境界が曖昧になる | `action` は `fetch` でRails APIにリクエストを送るだけ。処理の実体は常にRails側 |
 | フロント/バックエンドの分離 | Server Component / Server Action がバックエンド処理を兼ねるため、Railsのような「別プロセスのAPI」という区分けが薄れる | フロントは常にSPA、バックエンドは常にRails API、という役割分担が明確 |
-| このリポジトリでの位置付け | 不採用(SSR・Node.jsサーバー運用は今回のPoCのスコープ外) | 採用。既存のRails(API)+フロントSPAという構成をそのまま踏襲できる |
+| このリポジトリでの位置付け | 不採用(Next.jsへの全面移行は検討していない) | 採用(移行中)。既存のRails(API)+フロントは、SEO対策のためFramework Mode(SSR)へ移行中 |
 
 ポイントは、**Next.js は「フロントエンドとバックエンドを1つのNode.jsアプリに
 統合する」方向の設計**であるのに対し、**React Router v8 の Data Mode は
@@ -490,11 +494,12 @@ JavaScript側に持ってくる」構成に近く、React Router v8の`loader`�
 コントローラはRails側に残したまま、それを呼び出すクライアントを差し替える」
 構成に近い、と捉えると馴染みやすいと思います。
 
-また、SSR(サーバーサイドレンダリング)が不要である点も選定理由の一つです。
-Next.jsの主な強みであるSEO対策・初期表示の高速化は、社内向け管理画面のような
-用途では優先度が低く、Node.jsサーバーの運用コスト(デプロイ・スケーリング・
-監視対象の増加)に見合わないと判断しています。SEOやSSRが必要になった場合は
-改めてFramework Modeへの移行を検討する、という位置付けです(CLAUDE.md参照)。
+なお、上記は Data Mode 採用時点(移行前)の判断であり、SSR(サーバーサイド
+レンダリング)が不要という前提に立っていました。その後、将来的な SEO 対策を
+見据えて React Router v8 の Framework Mode(SSR)へ移行する方針に転換しています
+(CLAUDE.md参照)。Node.js サーバーの運用コスト(デプロイ・スケーリング・監視対象の
+増加)は増えますが、初回 HTML にコンテンツと `<title>`/`<meta>` を含められる点が
+SEO上不可欠であるため、このトレードオフを受け入れる判断をしています。
 
 ## 11. ログイン処理について(オプション要件・将来の検討事項)
 
