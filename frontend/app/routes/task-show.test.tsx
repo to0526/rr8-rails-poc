@@ -6,7 +6,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { createRoutesStub } from 'react-router'
-import TaskShow, { taskShowAction, taskShowLoader } from './task-show'
+import TaskShow, { action, loader } from './task-show'
 import { apiDelete, apiGet } from '../lib/api'
 
 vi.mock('../lib/api', () => ({
@@ -19,8 +19,8 @@ function renderTaskShow() {
     {
       path: '/tasks/:id',
       Component: TaskShow,
-      loader: taskShowLoader,
-      action: taskShowAction,
+      loader,
+      action,
     },
     {
       // action成功時のredirect先。遷移できたことを確認するための目印を描画する。

@@ -1,24 +1,20 @@
-/// <reference types="vitest/config" />
+import { reactRouter } from '@react-router/dev/vite'
 import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
 
-// Viteの設定ファイル。react() プラグインで JSX/TSX や Fast Refresh(コード保存時の
-// 即時反映)を有効にしている。開発サーバーを http://localhost:5173 以外に変えたい
-// 場合や、Dockerコンテナ外からアクセスしたい場合はここに server オプションを追加する。
+// Viteの設定ファイル。Framework Mode(SSR)に切り替えたため、JSX/TSXの変換や
+// Fast Refresh(コード保存時の即時反映)を担う @vitejs/plugin-react の react() ではなく、
+// @react-router/dev が提供する reactRouter() プラグインを使う。
+// reactRouter() は react() の機能に加えて、react-router.config.ts(ssr: true)を読み込み、
+// app/routes.ts のルート定義からサーバー/クライアント双方のビルド成果物を生成する処理を
+// 引き受けている。
+//
+// 開発サーバーを http://localhost:5173 以外に変えたい場合や、Dockerコンテナ外から
+// アクセスしたい場合はここに server オプションを追加する。
 // https://vite.dev/config/
 //
-// test: Vitest(このPoCで使うテストランナー)の設定。Viteの設定ファイルと共有できる
-// ため、ここに追記している(`npm run test` で実行される)。
-// - environment: 'jsdom' … コンポーネントをブラウザなしでレンダリングするための
-//   擬似DOM環境
-// - setupFiles: 各テストファイルの実行前に読み込むファイル(jest-domのマッチャー登録用)
-// describe/it/expect などは各テストファイルで "vitest" から明示的にimportして使う
-// (globals: true にすればimportを省略できるが、このPoCでは他のコードと同じく
-// 「どこから来た関数か」を追いやすくするためimportを省略しない方針にしている)
+// 注意: このファイルには Vitest 用の test 設定を置かない。reactRouter() プラグインは
+// SSR前提の変換を行うため、Vitestの非SSRなユニットテスト実行と相性が悪い。
+// テスト用の設定は vitest.config.ts に分離している(`npm run test` はそちらを読む)。
 export default defineConfig({
-  plugins: [react()],
-  test: {
-    environment: 'jsdom',
-    setupFiles: ['./app/test/setup.ts'],
-  },
+  plugins: [reactRouter()],
 })

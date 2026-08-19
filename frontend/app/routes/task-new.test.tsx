@@ -12,7 +12,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { createRoutesStub } from 'react-router'
-import TaskNew, { taskNewAction } from './task-new'
+import TaskNew, { action } from './task-new'
 import { apiPost } from '../lib/api'
 
 vi.mock('../lib/api', () => ({
@@ -24,7 +24,7 @@ function renderTaskNew() {
     {
       path: '/tasks/new',
       Component: TaskNew,
-      action: taskNewAction,
+      action,
     },
     {
       // action成功時のredirect先。遷移できたことを確認するための目印を描画する。

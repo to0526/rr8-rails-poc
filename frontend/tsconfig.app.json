@@ -4,7 +4,9 @@
     "target": "es2023",
     "lib": ["ES2023", "DOM"],
     "module": "esnext",
-    "types": ["vite/client"],
+    // "node" … entry.server.tsx が Node.js のビルトインモジュール("node:stream")を
+    // 使うため必要(ブラウザ側で実行される他のファイルには影響しない、型定義の追加のみ)
+    "types": ["vite/client", "node"],
     "allowArbitraryExtensions": true,
     "skipLibCheck": true,
 

@@ -1,7 +1,9 @@
 // トップページ用のコンポーネント。
 //
-// React Router v8 の Data Mode では、画面ごとのコンポーネントを
-// app/routes/ 以下にまとめ、router.tsx でパスと紐付ける、という構成にしている。
+// React Router v8 では、画面ごとのコンポーネントを app/routes/ 以下にまとめ、
+// routes.ts でパスと紐付ける、という構成にしている
+// (Data Mode時代は router.tsx という名前だったが、Framework Modeへの移行に伴い
+// routes.ts に置き換わった)。
 //
 // このページ自体はまだ Rails API との連携(loader / action)を持たない、
 // 単なる入り口のページ。API からデータを取得する画面は /tasks(タスク一覧)に

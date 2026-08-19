@@ -8,7 +8,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { createRoutesStub } from 'react-router'
-import TaskList, { taskListAction, taskListLoader } from './task-list'
+import TaskList, { action, loader } from './task-list'
 import { apiGet, apiPatch } from '../lib/api'
 
 vi.mock('../lib/api', () => ({
@@ -21,8 +21,8 @@ function renderTaskList() {
     {
       path: '/tasks',
       Component: TaskList,
-      loader: taskListLoader,
-      action: taskListAction,
+      loader,
+      action,
     },
   ])
 
