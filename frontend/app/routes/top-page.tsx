@@ -1,7 +1,7 @@
 // トップページ用のコンポーネント。
 //
 // React Router v8 の Data Mode では、画面ごとのコンポーネントを
-// src/routes/ 以下にまとめ、router.tsx でパスと紐付ける、という構成にしている。
+// app/routes/ 以下にまとめ、router.tsx でパスと紐付ける、という構成にしている。
 //
 // このページ自体はまだ Rails API との連携(loader / action)を持たない、
 // 単なる入り口のページ。API からデータを取得する画面は /tasks(タスク一覧)に
@@ -12,7 +12,7 @@
 // 見比べるために用意している。
 //
 // このPRでは画像・CSSの扱い方も検証している。
-// - logo: src/assets/react-router-logo.svg を import して使っている。
+// - logo: app/assets/react-router-logo.svg を import して使っている。
 //   import した変数(logo)には、Viteが解決した画像のURLが文字列として入る。
 //   実際に `docker build`(vite build)相当のビルドをして確認したところ、
 //   この画像のように小さいファイル(既定では4KB未満)は個別のファイルとして
