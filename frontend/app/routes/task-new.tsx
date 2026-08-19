@@ -29,7 +29,12 @@ type TaskErrors = Record<string, string[]>
 // - 成功(201)の場合: redirect() で一覧画面に遷移する
 // - バリデーションエラー(422)の場合: エラー内容をそのまま return する
 //   (この戻り値が TaskNew コンポーネント内の useActionData() で受け取れる)
-export async function taskNewAction({ request }: ActionFunctionArgs) {
+//
+// Framework Mode では、routes.ts で紐付けたファイルの中から「action」という名前の
+// exportを自動的に探してこのルートのactionとして使う(Data Mode時代のように
+// router.tsx側でaction: taskNewActionのように明示的に渡す必要はない)。
+// そのため、この名前(action)は自由に変更できない規約になっている。
+export async function action({ request }: ActionFunctionArgs) {
   const formData = await request.formData()
   const title = formData.get('title')
 
@@ -48,7 +53,7 @@ function TaskNew() {
   // action の戻り値(バリデーションエラー時のみ値が入る)を受け取る。
   // 成功時は redirect() するため、この画面自体が表示されなくなり
   // actionData は使われない。
-  const actionData = useActionData<typeof taskNewAction>()
+  const actionData = useActionData<typeof action>()
   const titleErrors = actionData?.errors?.title
 
   return (

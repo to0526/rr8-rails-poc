@@ -1,8 +1,8 @@
 // タスク一覧画面。
 //
-// React Router v8 の Data Mode では、画面表示前にデータを取得する処理を
-// コンポーネントの外に切り出した「loader」関数として書く。router.tsx で
-// このルートに loader を紐付けておくと、React Router が
+// React Router v8 では、画面表示前にデータを取得する処理を
+// コンポーネントの外に切り出した「loader」関数として書く。このファイルが
+// export する loader を routes.ts でこのルートに紐付けておくと、React Router が
 // 「URLが /tasks に変わった → 画面を描画する前に loader を呼ぶ → 取得結果を
 // 画面に渡す」という流れを自動的に行ってくれる。
 //
@@ -38,16 +38,23 @@ type TasksResponse = {
 
 // loader: このルート(/tasks)に遷移する際に、画面の描画より先に呼ばれる関数。
 // 戻り値(ここでは Task の配列)が useLoaderData() の戻り値になる。
-export async function taskListLoader(): Promise<Task[]> {
+//
+// Framework Mode では、routes.ts で紐付けたファイルの中から「loader」という名前の
+// exportを自動的に探してこのルートのloaderとして使う(Data Mode時代のように
+// router.tsx側でloader: taskListLoaderのように明示的に渡す必要はない)。
+// そのため、この名前(loader)は自由に変更できない規約になっている。
+export async function loader(): Promise<Task[]> {
   const response = await apiGet<TasksResponse>('/tasks')
   return response.data
 }
 
-// taskListAction: このルート(/tasks)に対して useFetcher().submit() が呼ばれたときに
+// action: このルート(/tasks)に対して useFetcher().submit() が呼ばれたときに
 // 実行される関数。<Form> によるページ遷移を伴う送信とは違い、fetcher による送信は
 // 「今表示している画面はそのままで、裏側でデータだけ更新する」ためのもの
 // (このPRでは、一覧の中の1タスクの完了/未完了だけをその場で切り替える用途)。
-export async function taskListAction({ request }: ActionFunctionArgs) {
+// loaderと同様、「action」という名前のexportがこのルートのactionとして
+// 自動的に使われる(Framework Modeの規約)。
+export async function action({ request }: ActionFunctionArgs) {
   const formData = await request.formData()
   const taskId = formData.get('taskId')
   const done = formData.get('done') === 'true'
@@ -59,7 +66,7 @@ export async function taskListAction({ request }: ActionFunctionArgs) {
     // バックエンドが落ちている場合など、更新自体が失敗したケース。
     // ここで例外を投げ直すとエラーバウンダリに飛んで画面全体が壊れてしまうため、
     // 「失敗した」という結果を返すだけにとどめる。
-    // action が完了すると React Router は自動的に taskListLoader を再実行して
+    // action が完了すると React Router は自動的に loader を再実行して
     // 一覧を再取得するので、実際には更新されていない(=元のままの)done値が
     // 返ってきて、後述の楽観的UIの表示も自然に元へ戻る(ロールバック)。
     return { ok: false }
@@ -72,7 +79,7 @@ export async function taskListAction({ request }: ActionFunctionArgs) {
 // 呼び出すためのフック。ここでは「チェックボックスをクリックしたら、画面はそのままで
 // 裏側のRails APIだけ叩いて完了状態を更新する」という用途で使っている。
 function TaskRow({ task }: { task: Task }) {
-  const fetcher = useFetcher<typeof taskListAction>()
+  const fetcher = useFetcher<typeof action>()
 
   // fetcher.formData は「今まさに送信中のFormData」。送信中でなければ undefined。
   // これが存在する間は、サーバーからの返事を待たずに「送信しようとしている値」を
@@ -105,9 +112,9 @@ function TaskRow({ task }: { task: Task }) {
 function TaskList() {
   // loader が返した値をそのまま受け取る。ここでは fetch もローディング状態の
   // 管理も不要で、「取得済みのデータをどう表示するか」だけに専念できる。
-  // 型引数には loader 関数自体(typeof taskListLoader)を渡すことで、
+  // 型引数には loader 関数自体(typeof loader)を渡すことで、
   // loader の戻り値の型がそのまま useLoaderData() の戻り値の型として推論される。
-  const tasks = useLoaderData<typeof taskListLoader>()
+  const tasks = useLoaderData<typeof loader>()
 
   return (
     <main className={styles.main}>

@@ -10,6 +10,11 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# react-router build(旧: vite buildの出力先だった dist の代わり)のビルド成果物
+build
+# react-router dev/build が自動生成する型定義キャッシュ(typegenの導入自体はPR18でやるが、
+# `react-router dev` を動かすだけでこのディレクトリが作られるため先に無視しておく)
+.react-router
 *.local
 
 # Editor directories and files
