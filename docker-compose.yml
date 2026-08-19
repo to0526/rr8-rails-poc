@@ -41,7 +41,9 @@ services:
     command: ["sh", "-c", "bin/rails db:prepare && bin/rails db:seed && bin/rails server -b 0.0.0.0 -p 3000"]
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      target: dev
     env_file:
       - .env
     ports:
@@ -51,6 +53,28 @@ services:
       # ホスト側にnode_modulesが無くても、コンテナ内でインストール済みのnode_modulesを
       # 上書きしないようにするためのおまじない(無名ボリューム)
       - /app/node_modules
+    depends_on:
+      - backend
+
+  # PR19: 本番相当ビルド(react-router build → react-router-serve での配信)を
+  # ローカルで試すための検証用サービス。`vite dev` のSSRは開発用の挙動であり、
+  # 本番ビルド後の挙動とは異なるため、SEO効果をより正確に検証する目的で追加する。
+  # あくまでローカル検証用であり、本番デプロイ設定(ECS Fargate等)ではない。
+  #
+  # 通常の `docker-compose up` には含めず、
+  # `docker-compose --profile prod up frontend-prod` のように明示的に指定した
+  # ときだけ起動する(opt-in)。ビルド済みの成果物をそのまま動かす検証のため、
+  # frontend(dev)と違いソースをvolumeマウントしない。
+  frontend-prod:
+    build:
+      context: ./frontend
+      target: prod
+    profiles:
+      - prod
+    env_file:
+      - .env
+    ports:
+      - "4000:3000"
     depends_on:
       - backend
 
