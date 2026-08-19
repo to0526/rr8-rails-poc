@@ -202,6 +202,25 @@ loader/action がサーバー(Node プロセス)側で実行されるように�
 Docker環境での最終確認(`docker-compose exec frontend printenv | grep API_BASE_URL` 含む)
 はレビュー側で実施する前提とする。
 
+**レビュー側の実機Docker環境で発覚した追加修正**: 実際に `docker-compose up` した状態で
+`/tasks` にアクセスすると、loader からの `GET /tasks` が **403** で失敗することが判明した
+(このセッションの実装時は dockerd が無く、実際の Rails 経由での動作確認ができていなかった
+ため見落としていた)。原因は Rails の `HostAuthorization` ミドルウェア: development環境でも
+デフォルトでは `.localhost` / `.test` ドメインとIPアドレスしか許可されておらず、
+frontendコンテナ内のNodeプロセスが `http://backend:3000/...` にアクセスした際の
+`Host: backend:3000` ヘッダーが許可リストに無く 403 Blocked host で弾かれていた
+(`actionpack` の `ActionDispatch::HostAuthorization::Permissions#allows?` で
+`backend:3000` を渡すと `false` になることを実際のgemのコードで確認した)。
+Rails標準の `RAILS_DEVELOPMENT_HOSTS` 環境変数(development環境のデフォルト許可ホストに
+追記される仕組み。`config/environments/development.rb` を書き換える方式ではなく、この
+リポジトリの「環境依存の値は環境変数化する」方針に合わせてこちらを採用)に `backend` を
+追加することで解消した(`.env.example` に `RAILS_DEVELOPMENT_HOSTS=backend` を追加。
+`docker-compose.yml` の `backend` サービスも既に `env_file: .env` のため追加のコード
+変更は不要)。同じ仕組みで `Permissions#allows?("backend:3000")` が `true` になることを
+確認済み(Rails自体は今回もmysql2のネイティブビルドがローカル環境で失敗し起動できなかった
+ため、`actionpack` の該当クラスを直接呼び出す形での確認に留まる。実際に Rails サーバーを
+起動しての確認はレビュー側で実施する前提とする)。
+
 **動作確認**:
 - `docker-compose up` → `/tasks` が正常に表示されること(loader が `backend:3000` 経由で
   取得できていることの確認)
