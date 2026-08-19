@@ -49,7 +49,7 @@ PR13 以降は GitHub 上の1つの PR(**#20**, ブランチ `claude/framework-m
 | PR13 | 方針ドキュメント更新(CLAUDE.md / frontend-guide) | ✅ 完了(PR #20 にコミット済み) |
 | PR14 | `frontend/src/` → `frontend/app/` リネームのみ | ✅ 完了 |
 | PR15 | Framework Mode 本体の切り替え(SSR化) | ✅ 完了 |
-| PR16 | API ベース URL のサーバー/クライアント分離 | 未着手 |
+| PR16 | API ベース URL のサーバー/クライアント分離 | ✅ 完了 |
 | PR17 | 各ルートへの `meta` 追加(SEO 本丸) | 未着手 |
 | PR18 | typegen 導入 | 未着手 |
 | PR19 | 本番相当 Docker 検証環境の追加 | 未着手 |
@@ -174,15 +174,41 @@ loader/action がサーバー(Node プロセス)側で実行されるように�
   (`VITE_` prefix を付けないこと — 付けるとクライアントバンドルに漏れてしまう点を
   コメントで明記)
 - `docker-compose.yml` — `frontend` サービスは既に `env_file: .env` で環境変数を
-  受け取っているため構造変更は不要な想定。念のため確認
+  受け取っているため構造変更は不要な想定。念のため確認 →
+  実際に不要だったため変更なし
+
+**計画からの変更点(実装時に判明)**:
+- ベースURLの解決を、モジュール読み込み時に1回だけ行う実装(`const API_BASE_URL = ...`)
+  ではなく、`resolveApiBaseUrl()` 関数として各 `apiGet` 等の呼び出し時に毎回評価する
+  実装にした。`frontend/app/lib/api.ts` は loader/action からだけでなく
+  `/tasks-legacy`(素の `useEffect` + fetch、SSR自体はされるが API 呼び出しはブラウザの
+  `useEffect` でのみ発生する)からも import されるため、モジュール読み込み時点で
+  `API_BASE_URL_INTERNAL` 未設定を例外にすると、本来 API を呼ばない `/tasks-legacy` や
+  `/` のSSRまで巻き込んで壊れてしまうことが動作確認で判明したため
+
+**実装環境に関する注記**: この実装セッションでも dockerd が使用できなかったため、
+`docker build` / `docker run` は実行していない。代わりにホスト上の Node.js で
+`npm run test` / `npm run build` / `npm run lint` がすべて成功することを確認した上で、
+`npm run dev` とダミーの `http://localhost:3000/api/v1/tasks` サーバーを使って以下を
+`curl` で確認した:
+- `API_BASE_URL_INTERNAL` を設定した状態で `/tasks` にアクセスすると 200 が返り、
+  レスポンスHTMLにタスク名が含まれる(サーバー側で `API_BASE_URL_INTERNAL` 経由の
+  取得ができていることの確認。本来のDocker環境では `backend:3000` になるが、ローカル
+  検証のため同じ到達性を持つ `localhost:3000` を両方の環境変数に設定して代用した)
+- `API_BASE_URL_INTERNAL` を外した状態では `/tasks`(loaderあり)は 500 になり、
+  ログに「API_BASE_URL_INTERNAL が設定されていません」という分かりやすいエラーが出る
+  一方、`/tasks-legacy`(loaderなし)と `/` は 200 のまま影響を受けないことを確認した
+
+Docker環境での最終確認(`docker-compose exec frontend printenv | grep API_BASE_URL` 含む)
+はレビュー側で実施する前提とする。
 
 **動作確認**:
 - `docker-compose up` → `/tasks` が正常に表示されること(loader が `backend:3000` 経由で
   取得できていることの確認)
 - `docker-compose exec frontend printenv | grep API_BASE_URL` で両方の変数が
   コンテナ内に存在すること
-- `API_BASE_URL_INTERNAL` を意図的に外した場合、loader が分かりやすいエラーになる
-  ことを軽く確認
+- `API_BASE_URL_INTERNAL` を意図的に外した場合、`/tasks` へのアクセスで loader が
+  分かりやすいエラーになることを軽く確認
 
 ---
 
