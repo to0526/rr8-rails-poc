@@ -34,7 +34,7 @@ function resolveApiBaseUrl(): string {
     // デフォルト値を用意できない(localhostだと自分自身を指してしまい間違った
     // 挙動になるため)。設定漏れに気づけるよう、silent fallbackにせずここで
     // 明示的にエラーを投げる。
-    const baseUrl = process.env.API_BASE_URL_INTERNAL
+    const baseUrl = process.env.API_BASE_URL_INTERNAL // Nodeプロセス用。例: http://backend:3000/api/v1(Docker内部DNSでbackendコンテナに解決される)
     if (!baseUrl) {
       throw new Error(
         'API_BASE_URL_INTERNAL が設定されていません。.env に ' +
@@ -47,7 +47,9 @@ function resolveApiBaseUrl(): string {
   // ブラウザ実行時は .env の VITE_API_BASE_URL で上書き可能(ポートを変えた場合などに使う)。
   // VITE_ prefixが付いた環境変数だけがクライアントのJSバンドルに埋め込まれる仕組み
   // (Viteの仕様)なので、こちらはビルド時に決まる import.meta.env から読む。
-  return import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000/api/v1'
+  return (
+    import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000/api/v1' // ブラウザ用。docker-composeでホストに公開された localhost:3000 経由
+  )
 }
 
 // Rails側で {"data": [...]} や {"errors": {...}} のようなエラーではない
