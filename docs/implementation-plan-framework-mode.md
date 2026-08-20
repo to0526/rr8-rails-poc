@@ -53,7 +53,7 @@ PR13 以降は GitHub 上の1つの PR(**#20**, ブランチ `claude/framework-m
 | PR17 | 各ルートへの `meta` 追加(SEO 本丸) | ✅ 完了 |
 | PR18 | typegen 導入 | ✅ 完了 |
 | PR19 | 本番相当 Docker 検証環境の追加 | ✅ 完了 |
-| PR20 | ドキュメント最終更新 | 未着手 |
+| PR20 | ドキュメント最終更新 | ✅ 完了 |
 
 ## PR13: 方針ドキュメント更新 ✅完了
 方針ドキュメントの更新のみ。コードは変更しない。
@@ -434,7 +434,7 @@ Docker環境での最終確認(`docker-compose --profile prod up frontend-prod` 
 
 ---
 
-## PR20: ドキュメント最終更新
+## PR20: ドキュメント最終更新 ✅完了
 実装が固まった後の最終ドキュメント更新。
 
 - `docs/frontend-guide-for-rails-engineers.md` §10 を書き直し

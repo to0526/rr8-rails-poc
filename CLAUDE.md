@@ -60,36 +60,44 @@ Docker 環境上で動かし、実運用への採用可否を判断するため�
   - `db` コンテナ(既存アプリの DB 種別に合わせる。MySQL 想定)
 - 本番運用は想定しない(検証用途に限定)
 
-## ディレクトリ構成(想定)
+## ディレクトリ構成(実際の構成)
 
-> **Note:** 以下は Data Mode 時代からの記述で、Framework Mode 移行が完了していません。
-> `frontend/src/` は Framework Mode の標準に合わせて `frontend/app/` にリネームし、
-> `router.tsx` / `main.tsx` は `routes.ts` / `root.tsx` / `entry.server.tsx` /
-> `entry.client.tsx` に置き換わる予定。移行完了後にこのセクションを更新する。
+Framework Mode(SSR)移行が完了した現在の構成。`frontend/src/` は
+`frontend/app/`(React Router Framework Mode の標準ディレクトリ名)にリネーム済みで、
+Data Mode 時代の `router.tsx` / `main.tsx` / `index.html` は廃止され、
+`routes.ts` / `root.tsx` / `entry.server.tsx` / `entry.client.tsx` に置き換わっている。
 
 ```
 .
 ├── CLAUDE.md
-├── docker-compose.yml
+├── docker-compose.yml         # frontend(dev) / backend / db に加え、
+│                               # opt-inの frontend-prod(本番相当ビルド検証用)を含む
 ├── backend/
 │   ├── Dockerfile
 │   ├── app/
 │   │   ├── controllers/api/v1/   # 新規APIアプリのコントローラ
 │   │   └── models/               # 新規APIアプリのモデル
 │   └── config/
-│       ├── initializers/cors.rb
+│       ├── initializers/cors.rb  # FRONTEND_ORIGIN(カンマ区切りで複数指定可)を許可
 │       └── routes.rb
 └── frontend/
-    ├── Dockerfile
+    ├── Dockerfile                # dev / prod のマルチステージ構成(PR19)
     ├── package.json
-    ├── vite.config.ts
-    └── src/
-        ├── main.tsx
-        ├── router.tsx             # createBrowserRouter 定義
-        ├── routes/                # loader/action を持つルートコンポーネント
-        ├── routes-legacy/         # 比較用: useEffect+fetch の従来型
+    ├── vite.config.ts            # @react-router/dev/vite の reactRouter() プラグイン
+    ├── vitest.config.ts          # Vitest 用設定(素の @vitejs/plugin-react を使用)
+    ├── react-router.config.ts    # { ssr: true }(全ルートSSR)
+    └── app/
+        ├── root.tsx               # <html>/<Outlet> を持つ最上位レイアウト
+        ├── routes.ts              # ルート定義(route() 配列。index.html/main.tsx の代替)
+        ├── entry.server.tsx       # サーバーレンダリングエントリ
+        ├── entry.client.tsx       # hydrateRoot() によるハイドレーションエントリ
+        ├── routes/                # loader/action/meta を持つルートコンポーネント
+        │                          # (typegen による Route.LoaderArgs 等を使用。PR18)
+        ├── routes-legacy/         # 比較用: useEffect+fetch の従来型(meta も未設定)
         └── lib/
             └── api.ts             # fetch 共通ラッパー、エラーハンドリング
+                                    # (サーバー/ブラウザでベースURLを切り替える。
+                                    # 詳細は frontend-guide-for-rails-engineers.md 10節)
 ```
 
 ## 開発ワークフロー(最重要)
